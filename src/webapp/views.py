@@ -857,10 +857,15 @@ def register_routes(app):
         if reply:
             db.add_chat_message(g.user["id"], "assistant", reply[:4000], provider)
         else:
+            configured = ai.configured_providers()
+            if configured:
+                detail = "The configured AI service is not responding (check the logs / API quota)."
+            else:
+                detail = ("No AI provider is configured on this server "
+                          "(add GEMINI_API_KEY or OPENAI_API_KEY).")
             db.add_chat_message(
                 g.user["id"], "assistant",
-                "Rudra is offline right now — neither the local model nor an "
-                "API key is reachable. Try again in a moment.",
+                "Rudra is offline right now. " + detail,
             )
         return redirect(url_for("rudra"))
 

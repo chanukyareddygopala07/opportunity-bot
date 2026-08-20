@@ -25,6 +25,26 @@ logger = logging.getLogger(__name__)
 DEFAULT_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434")
 DEFAULT_MODEL = os.environ.get("AI_MODEL", "deepseek-r1:8b")
 
+
+def _log_provider_error(provider, message, exc=None):
+    logger.info("AI provider %s failed: %s", provider, message)
+    try:
+        db.log_error("ai", provider, message, getattr(exc, "reason", None) or None)
+    except Exception:
+        pass
+
+
+def configured_providers():
+    """Names of AI providers with keys/endpoints configured, e.g. ["gemini"]."""
+    providers = []
+    if os.environ.get("OPENAI_API_KEY", "").strip():
+        providers.append("openai")
+    if os.environ.get("GEMINI_API_KEY", "").strip():
+        providers.append("gemini")
+    if is_available():
+        providers.append("ollama")
+    return providers
+
 SYSTEM_PROMPT = (
     "You are a careful eligibility-checking assistant for an Indian "
     "undergraduate (B.Tech) student. Apply this startup-friendly policy:\n"
@@ -205,8 +225,12 @@ def _openai_chat(messages, timeout=60):
             "Authorization": f"Bearer {api_key}",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode())
+    except Exception as exc:
+        _log_provider_error("openai", str(exc), exc)
+        return None, None
     return (body.get("choices") or [{}])[0].get("message", {}).get("content", ""), "openai"
 
 
@@ -244,8 +268,15 @@ def _gemini_chat(messages, timeout=60):
             "x-goog-api-key": api_key,
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        _log_provider_error("gemini", f"HTTP {exc.code}", exc)
+        return None, None
+    except Exception as exc:
+        _log_provider_error("gemini", str(exc), exc)
+        return None, None
     parts = (body.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
     return "".join(p.get("text", "") for p in parts), "gemini"
 
@@ -288,8 +319,12 @@ def chat_ask(user_messages, system=None, profile=None):
             f"{url}/api/chat", data=payload, method="POST",
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            body = json.loads(resp.read().decode())
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                body = json.loads(resp.read().decode())
+        except Exception as exc:
+            _log_provider_error("ollama", str(exc), exc)
+            return None, None
         return (body.get("message") or {}).get("content", ""), "ollama"
     return None, None
 
