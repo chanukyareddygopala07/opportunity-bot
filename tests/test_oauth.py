@@ -54,6 +54,24 @@ def test_start_redirects_to_provider(client):
     assert client.get("/auth/unknown").status_code == 404
 
 
+def test_unconfigured_provider_shows_error_not_500(app, client, monkeypatch):
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
+    resp = client.get("/auth/google")
+    assert resp.status_code == 200
+    assert b"configured on this server" in resp.data
+    resp = client.get("/auth/github")
+    assert resp.status_code == 200
+    assert b"configured on this server" in resp.data
+    login = client.get("/login")
+    assert b"Continue with Google" not in login.data
+    assert b"Continue with GitHub" not in login.data
+    register = client.get("/register")
+    assert b"Continue with Google" not in register.data
+
+
 def test_google_callback_creates_user(client, monkeypatch):
     state = oauth.new_state()
     client.set_cookie(oauth.STATE_COOKIE, state)

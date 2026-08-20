@@ -104,6 +104,14 @@ def _auth_note_failure():
     _AUTH_ATTEMPTS.setdefault(key, []).append(time.time())
 
 
+def _auth_provider_configured(provider):
+    if provider == "google":
+        return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+    if provider == "github":
+        return bool(os.environ.get("GITHUB_CLIENT_ID") and os.environ.get("GITHUB_CLIENT_SECRET"))
+    return False
+
+
 def register_routes(app):
 
     @app.before_request
@@ -751,7 +759,9 @@ def register_routes(app):
                 return _set_session_cookie(
                     redirect(url_for("index")), auth.start_session(user_id)
                 )
-        return render_template("register.html", user=g.user, error=error)
+        return render_template("register.html", user=g.user, error=error,
+                               google_configured=_auth_provider_configured("google"),
+                               github_configured=_auth_provider_configured("github"))
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -773,7 +783,9 @@ def register_routes(app):
                 return _set_session_cookie(response, auth.start_session(user["id"]))
             _auth_note_failure()
             error = "Invalid username or password."
-        return render_template("login.html", user=g.user, error=error)
+        return render_template("login.html", user=g.user, error=error,
+                               google_configured=_auth_provider_configured("google"),
+                               github_configured=_auth_provider_configured("github"))
 
     @app.route("/logout", methods=["POST"])
     def logout():
@@ -786,10 +798,18 @@ def register_routes(app):
     def oauth_start(provider):
         if provider not in ("google", "github"):
             abort(404)
-        state = oauth.new_state()
-        response = redirect(
-            oauth.google_auth_url(state) if provider == "google" else oauth.github_auth_url(state)
-        )
+        try:
+            state = oauth.new_state()
+            response = redirect(
+                oauth.google_auth_url(state) if provider == "google" else oauth.github_auth_url(state)
+            )
+        except oauth.OAuthError as exc:
+            return render_template(
+                "oauth.html", user=g.user,
+                error=f"{provider.title()} login isn't configured on this "
+                      f"server yet ({exc}). Use email login instead, or ask "
+                      f"the site owner to add the provider keys.",
+            ), 200
         response.set_cookie(oauth.STATE_COOKIE, state, httponly=True, samesite="Lax")
         return response
 

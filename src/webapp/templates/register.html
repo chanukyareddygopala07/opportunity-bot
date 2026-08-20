@@ -7,11 +7,17 @@
       student profile; you can adjust it on the Profile page. Personalized
       match scores activate immediately.</p>
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if google_configured or github_configured %}
     <div class="oauth-row">
-      <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='google') }}">Continue with Google</a>
-      <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='github') }}">Continue with GitHub</a>
+      {% if google_configured %}
+        <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='google') }}">Continue with Google</a>
+      {% endif %}
+      {% if github_configured %}
+        <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='github') }}">Continue with GitHub</a>
+      {% endif %}
     </div>
     <div class="divider"><span>or with email &amp; password</span></div>
+    {% endif %}
     <form method="post" class="form">
       <label>Username
         <input name="username" required autofocus minlength="3">
