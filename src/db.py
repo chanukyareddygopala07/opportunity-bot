@@ -1293,6 +1293,49 @@ def crawl_queue_stats():
         conn.close()
 
 
+def retry_crawl_job(job_id):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE crawl_jobs SET status = 'QUEUED', error = NULL, completed_at = NULL "
+            "WHERE id = ?", (job_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_source_enabled(source_id, enabled):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE sources SET enabled = ? WHERE id = ?",
+            (1 if enabled else 0, source_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def count_users():
+    conn = get_connection()
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def count_sources(enabled_only=False):
+    conn = get_connection()
+    try:
+        sql = "SELECT COUNT(*) FROM sources"
+        if enabled_only:
+            sql += " WHERE enabled = 1"
+        return int(conn.execute(sql).fetchone()[0])
+    finally:
+        conn.close()
+
+
 # --- reports (incorrect information) ---
 
 def add_report(opportunity_id, reporter_id, reason, notes=None):

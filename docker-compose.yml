@@ -71,5 +71,24 @@ services:
     depends_on:
       - n8n
 
+  api:
+    image: python:3.13-slim
+    container_name: opportunity-api
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir -q fastapi uvicorn pydantic && python -m src.api"
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - DATABASE_PATH=${DATABASE_PATH:-/app/data/opportunity.db}
+      - RUN_TOKEN=${RUN_TOKEN:-}
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./database:/app/database
+    depends_on:
+      - web
+
 volumes:
   n8n_data:

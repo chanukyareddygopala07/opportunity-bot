@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Admin — AAWARA{% endblock %}
+{% block content %}
+  <section class="hero">
+    <h1>Admin</h1>
+    <p>Operate the platform: sources, crawl queue, reports, users.</p>
+    <nav class="chips">
+      <a class="btn btn-small {{ 'btn-primary' if section == 'overview' }}" href="/admin">Overview</a>
+      <a class="btn btn-small {{ 'btn-primary' if section == 'sources' }}" href="/admin?section=sources">Sources</a>
+      <a class="btn btn-small {{ 'btn-primary' if section == 'jobs' }}" href="/admin?section=jobs">Crawl jobs</a>
+      <a class="btn btn-small {{ 'btn-primary' if section == 'reports' }}" href="/admin?section=reports">Reports ({{ reports | default(0) }})</a>
+      <a class="btn btn-small {{ 'btn-primary' if section == 'users' }}" href="/admin?section=users">Users</a>
+      <a class="btn btn-small {{ 'btn-primary' if section == 'opportunities' }}" href="/admin?section=opportunities">Opportunities</a>
+    </nav>
+  </section>
+
+  {% if run_summary %}
+    <div class="notice"><strong>Run complete.</strong> <span class="small">{{ run_summary }}</span></div>
+  {% endif %}
+  {% if run_error %}
+    <div class="notice"><strong style="color: var(--no)">Run failed:</strong> <span class="small">{{ run_error }}</span></div>
+  {% endif %}
+
+  {% if section == 'overview' %}
+    <div class="cards-grid">
+      <div class="stat"><div class="stat-value">{{ total }}</div><div class="stat-label">opportunities</div></div>
+      <div class="stat"><div class="stat-value">{{ sources_enabled }}/{{ sources }}</div><div class="stat-label">sources enabled</div></div>
+      <div class="stat"><div class="stat-value">{{ users }}</div><div class="stat-label">users</div></div>
+      <div class="stat"><div class="stat-value">{{ reports }}</div><div class="stat-label">pending reports</div></div>
+      <div class="stat"><div class="stat-value">{{ queue.get('QUEUED', 0) }}</div><div class="stat-label">jobs queued</div></div>
+      <div class="stat"><div class="stat-value">{{ queue.get('FAILED', 0) }}</div><div class="stat-label">jobs failed</div></div>
+    </div>
+    <form method="post" action="/admin/run" style="margin-top: 18px;">
+      <button class="btn btn-primary" type="submit">▶ Run pipeline now</button>
+    </form>
+
+  {% elif section == 'sources' %}
+    <table class="facts">
+      <thead><tr><th>Source</th><th>Method</th><th>Category</th><th>Priority</th><th>Failures</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for s in sources %}
+        <tr>
+          <td>
+            <a class="small" target="_blank" rel="noopener" href="{{ s.url }}">{{ s.name }}</a>
+            {% if s.cooldown_until %}<span class="small muted">· cooldown until {{ s.cooldown_until | short_date }}</span>{% endif %}
+          </td>
+          <td class="small muted">{{ s.method or '' }}</td>
+          <td class="small">{{ s.category or '' }}</td>
+          <td>{{ s.priority or '' }}</td>
+          <td>{{ s.consecutive_failures or 0 }}</td>
+          <td>
+            <form method="post" action="/admin/sources/{{ s.id }}/toggle" class="inline">
+              <input type="hidden" name="enabled" value="{{ 0 if s.enabled else 1 }}">
+              <button class="btn btn-small {{ 'btn-primary' if s.enabled else '' }}" type="submit">
+                {{ 'Enabled' if s.enabled else 'Disabled' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+  {% elif section == 'jobs' %}
+    <table class="facts">
+      <thead><tr><th>Source</th><th>Crawler</th><th>Priority</th><th>Status</th><th>Retries</th><th>Found/New/Dups</th><th>Error</th><th></th></tr></thead>
+      <tbody>
+      {% for j in jobs %}
+        <tr>
+          <td class="small">{{ j.source_name }}</td>
+          <td class="small muted">{{ j.crawler or '' }}</td>
+          <td>{{ j.priority or '' }}</td>
+          <td>{{ j.status or '' }}</td>
+          <td>{{ j.retry_count or 0 }}</td>
+          <td class="small">{{ j.items_found or 0 }}/{{ j.items_created or 0 }}/{{ j.duplicates_found or 0 }}</td>
+          <td class="small muted">{{ j.error or '' }}</td>
+          <td>
+            {% if j.status in ('FAILED', 'RETRYING') %}
+              <form method="post" action="/admin/jobs/{{ j.id }}/retry" class="inline">
+                <button class="btn btn-small" type="submit">Retry</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="muted small">No crawl jobs yet — run the pipeline to create them.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+  {% elif section == 'reports' %}
+    <table class="facts">
+      <thead><tr><th>Opportunity</th><th>Reason</th><th>Notes</th><th>Reported</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for r in reports %}
+        <tr>
+          <td><a class="small" href="/o/{{ r.opportunity_id }}">{{ r.title or '#' ~ r.opportunity_id }}</a></td>
+          <td class="small">{{ r.reason }}</td>
+          <td class="small muted">{{ r.notes or '' }}</td>
+          <td class="small">{{ r.created_at | short_date }}</td>
+          <td>
+            <form method="post" action="/admin/reports/{{ r.id }}/resolve" class="inline">
+              <input type="hidden" name="resolution" value="accepted">
+              <button class="btn btn-small btn-primary" type="submit">Accept + close</button>
+            </form>
+            <form method="post" action="/admin/reports/{{ r.id }}/resolve" class="inline">
+              <input type="hidden" name="resolution" value="ignored">
+              <button class="btn btn-small" type="submit">Ignore</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted small">No pending reports.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+  {% elif section == 'users' %}
+    <table class="facts">
+      <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Saved</th><th>Applications</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td>{{ u.username or '—' }}</td>
+          <td class="small muted">{{ u.email or '' }}</td>
+          <td>{{ u.saved or 0 }}</td>
+          <td>{{ u.apps or 0 }}</td>
+          <td class="small">{{ u.created_at | short_date }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+  {% elif section == 'opportunities' %}
+    <table class="facts">
+      <thead><tr><th>ID</th><th>Title</th><th>Org</th><th>Type</th><th>Deadline</th><th>Trust</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for o in items %}
+        <tr>
+          <td>{{ o.id }}</td>
+          <td><a class="small" href="/o/{{ o.id }}">{{ o.title | truncate(48) }}</a></td>
+          <td class="small muted">{{ o.organization or '' }}</td>
+          <td class="small">{{ o.type }}</td>
+          <td class="small">{{ o.deadline or '' }}</td>
+          <td>{{ o.trust_score or '—' }}</td>
+          <td>{{ o.status }}</td>
+          <td><a class="btn btn-small" href="/o/{{ o.id }}">View</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

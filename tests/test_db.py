@@ -8,7 +8,7 @@ EXPECTED_TABLES = {
     "execution_logs", "search_queries", "system_errors", "duplicates",
     "verifications", "ai_assessments", "sessions", "bookmarks",
     "discovery_runs", "source_health", "filtering_decisions", "raw_responses",
-    "chat_messages", "applications",
+    "chat_messages", "applications", "crawl_jobs", "reports", "opportunities_fts",
 }
 
 SAMPLE_OPP = {
@@ -32,7 +32,9 @@ SAMPLE_OPP = {
 def test_init_creates_all_tables(tmp_db):
     conn = db.get_connection()
     rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        "SELECT name FROM sqlite_master "
+        "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
+        "AND name NOT LIKE 'opportunities_fts_%'"
     ).fetchall()
     conn.close()
     assert {r["name"] for r in rows} == EXPECTED_TABLES

@@ -1,6 +1,7 @@
 """Web app routes: pages for browsing, auth, profile, stats, pipeline trigger."""
 import hmac
 import json
+import os
 import secrets
 
 from flask import (
@@ -28,10 +29,49 @@ def _login_required(view):
     return wrapped
 
 
+def _admin_sources():
+    from src import sources as registry
+    registry.sync_sources()
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, name, url, method, category, enabled, priority, "
+            "consecutive_failures, cooldown_until FROM sources ORDER BY name"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
+def _admin_users():
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, username, email, created_at, "
+            "(SELECT COUNT(*) FROM bookmarks b WHERE b.user_id = u.id) AS saved, "
+            "(SELECT COUNT(*) FROM applications a WHERE a.user_id = u.id) AS apps "
+            "FROM users u ORDER BY id"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
 def _safe_next(value):
     if value and value.startswith("/") and not value.startswith("//"):
         return value
     return None
+
+
+def _admin_required(view):
+    def wrapped(*args, **kwargs):
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        if not g.user or g.user.get("username") != admin_username:
+            return redirect(url_for("login", next=request.path))
+        return view(*args, **kwargs)
+
+    wrapped.__name__ = view.__name__
+    return wrapped
 
 
 def _set_session_cookie(response, token):
@@ -179,6 +219,7 @@ def register_routes(app):
             sort="newest",
             query=request.args.get("q", ""),
             review=True,
+            schema=schema,
             user=g.user,
         )
 
@@ -270,9 +311,83 @@ def register_routes(app):
         db.remove_bookmark(g.user["id"], opportunity_id)
         return redirect(request.referrer or url_for("detail", opportunity_id=opportunity_id))
 
+    @app.route("/admin")
+    @_admin_required
+    def admin_dashboard():
+        section = request.args.get("section", "overview")
+        data = {"section": section}
+        if section == "overview":
+            data["total"] = len(db.list_opportunities())
+            data["sources"] = db.count_sources()
+            data["sources_enabled"] = db.count_sources(enabled_only=True)
+            data["users"] = db.count_users()
+            data["queue"] = db.crawl_queue_stats()
+            data["reports"] = len(db.list_reports(status="pending"))
+            data["runs"] = len(db.list_recent_discovery_runs(limit=5))
+        elif section == "sources":
+            data["sources"] = _admin_sources()
+        elif section == "jobs":
+            data["jobs"] = db.list_crawl_jobs(limit=100)
+        elif section == "reports":
+            data["reports"] = db.list_reports(status="pending")
+        elif section == "users":
+            data["users"] = _admin_users()
+        elif section == "opportunities":
+            data["items"] = db.list_opportunities()[:100]
+        return render_template("admin.html", **data, user=g.user)
+
+    @app.route("/admin/sources/<int:source_id>/toggle", methods=["POST"])
+    @_admin_required
+    def admin_toggle_source(source_id):
+        form = request.form
+        enabled = form.get("enabled") == "1"
+        db.set_source_enabled(source_id, enabled)
+        return redirect(url_for("admin_dashboard", section="sources"))
+
+    @app.route("/admin/jobs/<int:job_id>/retry", methods=["POST"])
+    @_admin_required
+    def admin_retry_job(job_id):
+        db.retry_crawl_job(job_id)
+        return redirect(url_for("admin_dashboard", section="jobs"))
+
+    @app.route("/admin/reports/<int:report_id>/resolve", methods=["POST"])
+    @_admin_required
+    def admin_resolve_report(report_id):
+        resolution = request.form.get("resolution", "ignored")
+        db.resolve_report(report_id, resolution)
+        if resolution == "accepted":
+            conn = db.get_connection()
+            try:
+                row = conn.execute(
+                    "SELECT opportunity_id FROM reports WHERE id = ?", (report_id,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if row:
+                db.update_opportunity(row["opportunity_id"], status="closed")
+        return redirect(url_for("admin_dashboard", section="reports"))
+
+    @app.route("/admin/run", methods=["POST"])
+    @_admin_required
+    def admin_run():
+        data = {
+            "section": "overview",
+            "total": len(db.list_opportunities()),
+            "sources": db.count_sources(),
+            "sources_enabled": db.count_sources(enabled_only=True),
+            "users": db.count_users(),
+            "queue": db.crawl_queue_stats(),
+            "reports": len(db.list_reports(status="pending")),
+            "runs": len(db.list_recent_discovery_runs(limit=5)),
+        }
+        try:
+            data["run_summary"] = worker.run_pipeline()
+        except Exception as exc:
+            data["run_error"] = str(exc)[:500]
+        return render_template("admin.html", **data, user=g.user)
+
     @app.route("/manifest.json")
-    def webmanifest():
-        return jsonify({
+    def webmanifest():        return jsonify({
             "name": "Aawara — Internships & Fellowships for Indian students",
             "short_name": "Aawara",
             "start_url": "/",
