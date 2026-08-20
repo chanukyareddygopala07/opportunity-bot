@@ -63,7 +63,7 @@ app. No rebuild; port 8080 preserved.
    optional second (AIProvider abstraction).
 4. Migrate data once; keep dual-run capability during transition.
 
-## Phase E — Crawler router + job queue
+## Phase E — Crawler router + job queue — DONE
 
 1. Redis queue (or SQLite-backed queue first) with job states and priority.
 2. Router: static → Crawlee, AI-friendly → Crawl4AI, complex → Firecrawl
@@ -73,20 +73,47 @@ app. No rebuild; port 8080 preserved.
    surfaced in admin.
 4. Crawl priority by deadline proximity / freshness / reports.
 
-## Phase F — Structured extraction & 16 opportunity types
+Implementation: SQLite-backed `crawl_jobs` queue (QUEUED/RUNNING/FAILED/
+RETRYING) with `src/queue.py` enqueue/settle; `src/discovery/router.py`
+select_crawler (crawlee/crawl4ai/firecrawl/playwright/browser_use/
+ats/api/pdf/static/respect_robots) + priority_for_source (string labels);
+crawler recorded on every discovery run; worker pipeline enqueues and
+settles jobs; stats page shows queue + crawler column; `reports` table
+created. Tests: `tests/test_crawler_queue.py`. Source-registry migration
+and per-run health surfacing in admin deferred.
+
+## Phase F — Structured extraction & 16 opportunity types — DONE
 
 1. Extend opportunity_type enum + category/subcategory; structured
    eligibility (countries, degrees, years, branches, ages, experience).
 2. Extraction engine emits structured fields; validation rejects
    fabrication; UNKNOWN for missing stipend/deadline/eligibility.
 
-## Phase G — Verification pipeline v2
+Implementation: 20 opportunity types in `schema.OPPORTUNITY_TYPES`;
+`infer_type(title, description, category)` keyword rules (ordered
+most-specific first); lane mapping (internship vs fellowship) in
+`helpers.classify`; `?type=` filter with exact match + lane filters;
+SQLite FTS5 (`opportunities_fts`, triggers, ranked queries) with
+substring fallback; country/remote/verified_only filters. Structured
+eligibility extraction deferred (deterministic scoring already covers
+eligible/not_eligible/unclear). Tests: `test_opportunity_types.py`,
+`test_search_filters.py`.
+
+## Phase G — Verification pipeline v2 — DONE
 
 1. Official-source priority (official_url > source_url); alternative URLs
    on canonical; semantic deduplication (embedding-based, optional).
 2. next_verification scheduling; verification priority bumps near
    deadlines.
 3. Report incorrect information endpoint + admin review queue.
+
+Implementation: verification checks `official_url` first (falls back to
+`source_url`), `schedule_next_verification` (≤7d→12h, ≤30d→24h,
+verified→weekly, else daily), `verify_due(limit)` deadline-first via
+`get_due_verifications`; worker runs it in the pipeline; POST
+`/o/<id>/report` + form on detail page; admin resolves reports
+(accept+close / ignore). Semantic dedup deferred (deterministic
+duplicate detection remains). Tests: `test_verification_v2.py`.
 
 ## Phase H — APIs (FastAPI) + admin — DONE
 
