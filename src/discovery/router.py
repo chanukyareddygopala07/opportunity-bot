@@ -87,15 +87,17 @@ def select_crawler(source=None, url=None, robots_disallowed=False):
     return STATIC
 
 
+_PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
+_PRIORITY_LABEL = {3: "high", 2: "medium", 1: "low"}
+
+
 def priority_for_source(source, recent_deadlines=None):
     """Crawl priority from config priority + nearby deadlines of live items."""
-    base = {
-        "high": 3, "medium": 2, "low": 1,
-    }.get(str((source or {}).get("priority", "")).lower(), 2)
+    base = _PRIORITY_RANK.get(str((source or {}).get("priority", "")).lower(), 2)
     if recent_deadlines:
         for d in recent_deadlines:
             if d is not None and 0 <= d <= 7:
                 return "high"
-            if d is not None and d <= 30:
-                return base + 1 if base < 3 else base
-    return "high" if base >= 3 else ("medium" if base == 2 else "low")
+            if d is not None and d <= 30 and base < 3:
+                return _PRIORITY_LABEL[base + 1]
+    return _PRIORITY_LABEL[base]
