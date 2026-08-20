@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -32,6 +33,17 @@ def _log_provider_error(provider, message, exc=None):
         db.log_error("ai", provider, message, getattr(exc, "reason", None) or None)
     except Exception:
         pass
+
+
+def _retry_delay_seconds(exc, cap=45):
+    """Parse Google's 'Please retry in Ns' from a 429 body; fall back to 5s."""
+    try:
+        body = exc.read().decode()
+    except Exception:
+        return 5
+    match = re.search(r"retry in ([\d.]+)s", body)
+    delay = float(match.group(1)) if match else 5
+    return min(max(delay, 5), cap)
 
 
 def configured_providers():
@@ -268,15 +280,20 @@ def _gemini_chat(messages, timeout=60):
             "x-goog-api-key": api_key,
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        _log_provider_error("gemini", f"HTTP {exc.code}", exc)
-        return None, None
-    except Exception as exc:
-        _log_provider_error("gemini", str(exc), exc)
-        return None, None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < 2:
+                delay = _retry_delay_seconds(exc)
+                time.sleep(delay)
+                continue
+            _log_provider_error("gemini", f"HTTP {exc.code}", exc)
+            return None, None
+        except Exception as exc:
+            _log_provider_error("gemini", str(exc), exc)
+            return None, None
     parts = (body.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
     return "".join(p.get("text", "") for p in parts), "gemini"
 
