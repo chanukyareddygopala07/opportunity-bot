@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+data/
+tests/
+docs/
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+n8n_data/
