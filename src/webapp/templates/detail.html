@@ -94,6 +94,8 @@
             {%- if d is not none and d < 0 %} <span class="tag tag-muted">expired</span>{% endif -%}
           </td></tr>
         {% endif %}
+        <tr><th>Status</th><td><span class="tag {{ 'tag-muted' if deadline_label == 'Closed' or deadline_label == 'Deadline unknown' else 'tag-ok' }}">{{ deadline_label }}</span></td></tr>
+        <tr><th>Trust</th><td><span class="tag {{ 'tag-ok' if trust_score and trust_score >= 60 else 'tag-mid' if trust_score and trust_score >= 30 else 'tag-muted' }}">{{ trust_label }}{% if trust_score is not none %} · {{ trust_score }}/100{% endif %}</span></td></tr>
         {% if opp.listed_at %}<tr><th>Listed</th><td>{{ opp.listed_at | list_date }}</td></tr>{% endif %}
         {% if opp.start_date or opp.end_date %}<tr><th>Dates</th><td>{{ opp.start_date or '?' }} → {{ opp.end_date or '?' }}</td></tr>{% endif %}
         {% if opp.duration %}<tr><th>Duration</th><td>{{ opp.duration }}</td></tr>{% endif %}

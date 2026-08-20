@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src import schema
+from src import deadlines as _deadlines
+from src import trust as _trust
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SCHEMA_FILE = BASE_DIR / "database" / "schema.sql"
@@ -74,6 +76,12 @@ def _migrate(conn):
             "ALTER TABLE opportunities ADD COLUMN duplicate_of INTEGER "
             "REFERENCES opportunities(id)"
         )
+    for column, ddl in (
+        ("deadline_status", "TEXT"),
+        ("trust_score", "INTEGER"),
+    ):
+        if column not in opp_columns:
+            conn.execute(f"ALTER TABLE opportunities ADD COLUMN {column} {ddl}")
     user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
     for column, ddl in (
         ("citizenship", "TEXT"),
@@ -254,6 +262,8 @@ def upsert_opportunity(opp):
     ts = now_iso()
     opp["first_seen"] = opp.get("first_seen") or ts
     opp["last_seen"] = ts
+    opp["deadline_status"] = _deadlines.status(opp)
+    opp["trust_score"] = _trust.compute(opp)[0]
     columns = [
         "dedup_key", "title", "organization", "type", "category", "description",
         "location", "country", "remote", "hybrid", "deadline", "listed_at", "start_date",
@@ -264,6 +274,7 @@ def upsert_opportunity(opp):
         "official_url", "source_url", "source_type", "organization_trust_score",
         "verification_status", "eligibility_status", "match_score",
         "first_seen", "last_seen", "status", "saved",
+        "deadline_status", "trust_score",
     ]
     placeholders = ", ".join("?" for _ in columns)
     updates = ", ".join(f"{c} = excluded.{c}" for c in columns if c != "dedup_key")
@@ -796,6 +807,29 @@ def count_verifications():
     conn = get_connection()
     row = conn.execute("SELECT COUNT(*) FROM verifications").fetchone()
     return int(row[0]) if row else 0
+
+
+def refresh_deadline_and_trust(limit=None, conn=None):
+    """Backfill deadline_status + trust_score for all (or `limit`) opportunities."""
+    own = conn is None
+    conn = conn or get_connection()
+    try:
+        sql = "SELECT * FROM opportunities"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        rows = conn.execute(sql).fetchall()
+        for row in rows:
+            opp = row_to_opportunity(row)
+            conn.execute(
+                "UPDATE opportunities SET deadline_status = ?, trust_score = ? WHERE id = ?",
+                (_deadlines.status(opp), _trust.compute(opp)[0], opp["id"]),
+            )
+        if own:
+            conn.commit()
+        return len(rows)
+    finally:
+        if own:
+            conn.close()
 
 
 def record_verification(opportunity_id, status, link_status, message=None):

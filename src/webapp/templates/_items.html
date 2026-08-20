@@ -20,6 +20,9 @@
     {% endif %}
     {% if opp.status == 'expired' %}<span class="tag tag-muted">expired</span>{% endif %}
     {% if opp.status == 'closed' %}<span class="tag tag-muted">archived</span>{% endif %}
+    {% if opp.trust_score is not none %}
+      <span class="tag {{ 'tag-ok' if opp.trust_score >= 60 else 'tag-mid' if opp.trust_score >= 30 else 'tag-muted' }}" title="Trust score">✓ {{ opp.trust_score }}</span>
+    {% endif %}
   </div>
   {% if breakdown %}
     <div class="score-breakdown">

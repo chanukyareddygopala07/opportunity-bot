@@ -14,7 +14,7 @@ from flask import (
     url_for,
 )
 
-from src import db, store, webhook, worker, ai
+from src import db, store, webhook, worker, ai, deadlines, trust
 from src.webapp import auth, helpers, oauth
 
 
@@ -50,19 +50,20 @@ def register_routes(app):
     @app.route("/")
     def index():
         items = db.list_opportunities()
+        active = [o for o in items if deadlines.is_active(o)]
         fresh = sorted(
-            (o for o in items if o.get("status") in ("new", "seen")),
+            (o for o in active if o.get("status") in ("new", "seen")),
             key=lambda o: (o.get("first_seen") or ""),
             reverse=True,
         )[:6]
-        scored = helpers.score_items(items, g.user)
+        scored = helpers.score_items(active, g.user)
         matches = [
             (o, s, st, breakdown)
             for o, s, st, _reasons, _missing, breakdown in scored
             if helpers.publishable(st)
         ][:6]
         urgent = [
-            o for o in items
+            o for o in active
             if helpers.deadline_soon(o) and helpers.publishable(o.get("eligibility_status"))
         ]
         urgent.sort(key=lambda o: (helpers.deadline_days(o) or 9999))
@@ -148,6 +149,7 @@ def register_routes(app):
                 request.args.get("type", "")
             ),
             eligibility=["unclear"],
+            active_only=False,
         )
         items.sort(key=lambda o: (o.get("last_seen") or ""), reverse=True)
         scored = helpers.score_items(items, g.user, by_score=False)
@@ -218,6 +220,9 @@ def register_routes(app):
             bookmarked=bookmarked,
             application=application,
             user=g.user,
+            deadline_label=deadlines.label(deadlines.status(opp)),
+            trust_score=opp.get("trust_score"),
+            trust_label=trust.trust_label(opp.get("trust_score")),
         )
 
     @app.route("/o/<int:opportunity_id>/save", methods=["POST"])

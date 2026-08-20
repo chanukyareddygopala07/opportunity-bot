@@ -1,5 +1,5 @@
 """Web app view helpers: personalized scoring, filters, pagination, labels."""
-from src import db, scoring
+from src import db, scoring, deadlines
 from src.notifications import formatting
 
 PAGE_SIZE = 12
@@ -54,10 +54,13 @@ def classify(item):
     return kind
 
 
-def filter_items(items, query=None, opp_type=None, statuses=None, eligibility=None):
+def filter_items(items, query=None, opp_type=None, statuses=None, eligibility=None,
+                 active_only=True):
     q = (query or "").strip().lower()
     result = []
     for opp in items:
+        if active_only and not deadlines.is_active(opp):
+            continue
         if opp_type and classify(opp) != opp_type:
             continue
         if statuses and opp.get("status") not in statuses:
@@ -97,7 +100,7 @@ def deadline_soon(opp):
 
 
 def deadline_days(opp):
-    return formatting.deadline_days_left(opp.get("deadline"))
+    return deadlines.days_left(opp.get("deadline"))
 
 
 def apply_url(opp):

@@ -23,6 +23,7 @@ def run_maintenance():
             (today,),
         )
         expired = cur.rowcount
+        refreshed = db.refresh_deadline_and_trust(conn=conn)
         cutoff_90 = (now - timedelta(days=90)).isoformat()
         cur = conn.execute("DELETE FROM execution_logs WHERE started_at < ?", (cutoff_90,))
         pruned_logs = cur.rowcount
@@ -34,6 +35,7 @@ def run_maintenance():
         conn.commit()
         return {
             "expired": expired,
+            "refreshed": refreshed,
             "pruned_logs": pruned_logs,
             "pruned_errors": pruned_errors,
             "pruned_notifications": pruned_notifications,

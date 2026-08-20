@@ -42,7 +42,7 @@ app. No rebuild; port 8080 preserved.
 5. Tests: template smoke tests still pass; add homepage content assertions.
 6. Commit: "design system + landing page".
 
-## Phase C — Deadline engine + trust score (data layer, deterministic)
+## Phase C — Deadline engine + trust score (data layer, deterministic) — DONE
 
 1. Deadline statuses: OPEN / CLOSING_SOON (≤30d) / CLOSED / UNKNOWN /
    NO_DEADLINE; timezone-aware (Asia/Kolkata default); never surface
