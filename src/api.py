@@ -8,7 +8,10 @@ import uuid
 from datetime import datetime, timezone
 
 from src import db, deadlines, trust, schema
+from src.envfile import load_dotenv
 from src.webapp import helpers
+
+load_dotenv()
 
 try:
     from fastapi import FastAPI, HTTPException, Query, Request

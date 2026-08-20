@@ -12,8 +12,11 @@ from pathlib import Path
 from flask import Flask, g, redirect, request, url_for
 
 from src import db
+from src.envfile import load_dotenv
 from src.notifications import formatting
 from src.webapp import auth, views
+
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 
