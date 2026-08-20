@@ -66,13 +66,40 @@ def register_routes(app):
             if helpers.deadline_soon(o) and helpers.publishable(o.get("eligibility_status"))
         ]
         urgent.sort(key=lambda o: (helpers.deadline_days(o) or 9999))
+        total = len(items)
+        publishable = list(helpers.PUBLISHABLE_STATUSES)
+        categories = {}
+        for label, slug, emoji, opp_type, q in (
+            ("Internships", "internships", "💼", "internship", None),
+            ("Fellowships", "fellowships", "🎓", "fellowship", None),
+            ("Research", "opportunities", "🔬", None, "research"),
+            ("Scholarships", "opportunities", "🏅", None, "scholarship"),
+            ("Hackathons", "opportunities", "⚡", None, "hackathon"),
+            ("Jobs", "opportunities", "🚀", None, "job"),
+            ("Startups", "opportunities", "🛠️", None, "startup"),
+            ("Universities", "opportunities", "🏛️", None, "university"),
+        ):
+            cats = helpers.filter_items(items, query=q, opp_type=opp_type,
+                                        eligibility=publishable)
+            categories[label] = {
+                "href": "/" + slug + (("?q=" + q) if q else ""),
+                "count": len(cats),
+                "emoji": emoji,
+            }
+        runs = db.list_recent_discovery_runs(limit=1)
         return render_template(
             "index.html",
             fresh=fresh,
             matches=matches,
             urgent=urgent,
             user=g.user,
-            total=len(items),
+            total=total,
+            eligible=sum(1 for o in items if helpers.publishable(o.get("eligibility_status"))),
+            verified=db.count_verifications(),
+            official=sum(1 for o in items if o.get("official_url")),
+            with_deadline=sum(1 for o in items if helpers.deadline_days(o) is not None),
+            last_run=(runs[0].get("started_at") or "")[:16] if runs else None,
+            categories=categories,
         )
 
     @app.route("/opportunities")

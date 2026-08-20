@@ -792,6 +792,12 @@ def record_eligibility(opportunity_id, user_id, status, reasons=None, missing=No
         conn.close()
 
 
+def count_verifications():
+    conn = get_connection()
+    row = conn.execute("SELECT COUNT(*) FROM verifications").fetchone()
+    return int(row[0]) if row else 0
+
+
 def record_verification(opportunity_id, status, link_status, message=None):
     conn = get_connection()
     try:

@@ -3,50 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Aawara — internships, fellowships and research programs for Indian students, found 24/7 by Arjun & Vidya.">
-  <meta name="theme-color" content="#5b8cff">
+  <meta name="description" content="AAWARA — internships, fellowships and research programs for Indian students, found 24/7 by Arjun & Vidya.">
+  <meta name="theme-color" content="#00e676">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="manifest" href="{{ url_for('webmanifest') }}">
-  <title>{% block title %}Aawara{% endblock %}</title>
+  <title>{% block title %}AAWARA{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div class="wrap nav">
-      <a class="brand" href="{{ url_for('index') }}">🎯 Aawara</a>
+      <a class="brand" href="{{ url_for('index') }}"><span class="brand-dot"></span>AAWARA</a>
       <nav>
-        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('index') }}">Discover</a>
         <a href="{{ url_for('opportunities_list') }}">Opportunities</a>
-        <a href="/internships">Arjun · Internships</a>
-        <a href="/fellowships">Vidya · Fellowships</a>
-        <a href="{{ url_for('top') }}">Top</a>
-        <a href="{{ url_for('urgent') }}">Urgent</a>
-        <a href="{{ url_for('review_queue') }}">Review</a>
-        <a href="{{ url_for('rudra') }}">Rudra</a>
-        <a href="{{ url_for('resources') }}">Direct sources</a>
-        {% if g.user %}<a href="{{ url_for('saved') }}">Saved</a>{% endif %}
-        {% if g.user %}<a href="{{ url_for('applications_dashboard') }}">Applications</a>{% endif %}
-        {% if g.user %}<a href="{{ url_for('resume_page') }}">Resume</a>{% endif %}
-        {% if g.user %}<a href="{{ url_for('autofill_token') }}">Autofill</a>{% endif %}
-        <a href="{{ url_for('stats') }}">Stats</a>
+        <a href="/fellowships">Fellowships</a>
+        <a href="/internships">Internships</a>
+        <a href="/opportunities?q=research">Research</a>
+        <a href="/opportunities?q=hackathon">Hackathons</a>
       </nav>
       <div class="user">
         {% if g.user %}
           <a href="{{ url_for('profile') }}">{{ g.user.username }}</a>
+          <a href="{{ url_for('rudra') }}">Rudra</a>
+          <a href="{{ url_for('saved') }}">Saved</a>
           <form method="post" action="{{ url_for('logout') }}" class="inline">
             <button class="btn btn-small" type="submit">Logout</button>
           </form>
         {% else %}
           <a href="{{ url_for('login') }}">Login</a>
-          <a class="btn btn-small btn-primary" href="{{ url_for('register') }}">Sign up</a>
+          <a class="btn btn-small btn-black" href="{{ url_for('register') }}">Sign up</a>
         {% endif %}
       </div>
     </div>
   </header>
-  <main class="wrap">
+  <main>
     {% block content %}{% endblock %}
   </main>
-  <footer class="footer wrap">
-    <span>Aawara · Arjun &amp; Vidya run every 2 hours · every listing stored locally · Rudra is advisory-only</span>
+  <footer class="footer">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <span class="f-brand"><span class="brand-dot"></span>AAWARA</span>
+        <p>Internships, fellowships, scholarships and research for Indian
+           students — collected 24/7 by Arjun &amp; Vidya from official
+           sources, verified and stored locally.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Explore</h4>
+        <a href="{{ url_for('index') }}">Discover</a>
+        <a href="{{ url_for('opportunities_list') }}">Opportunities</a>
+        <a href="/internships">Internships</a>
+        <a href="/fellowships">Fellowships</a>
+        <a href="{{ url_for('top') }}">Top picks</a>
+        <a href="{{ url_for('urgent') }}">Deadlines soon</a>
+      </div>
+      <div class="footer-col">
+        <h4>Tools</h4>
+        <a href="{{ url_for('rudra') }}">Rudra · AI guide</a>
+        <a href="{{ url_for('resume_page') }}">Resume builder</a>
+        <a href="{{ url_for('autofill_token') }}">Autofill extension</a>
+        <a href="{{ url_for('applications_dashboard') }}">Applications</a>
+        <a href="{{ url_for('resources') }}">Direct sources</a>
+      </div>
+      <div class="footer-col">
+        <h4>Account</h4>
+        {% if g.user %}
+          <a href="{{ url_for('profile') }}">Profile</a>
+          <a href="{{ url_for('saved') }}">Saved</a>
+          <a href="{{ url_for('stats') }}">Stats</a>
+          <form method="post" action="{{ url_for('logout') }}" class="inline">
+            <button class="btn btn-small" type="submit">Logout</button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('login') }}">Login</a>
+          <a href="{{ url_for('register') }}">Sign up</a>
+          <a href="{{ url_for('stats') }}">Stats</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="footer-note">
+      AAWARA · Arjun &amp; Vidya run every 2 hours · every listing stored locally ·
+      Rudra is advisory-only and never invents facts.
+    </div>
   </footer>
   {% if not request.headers.get('User-Agent', '').startswith('python') %}
   <script>

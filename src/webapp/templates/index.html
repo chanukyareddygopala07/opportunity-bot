@@ -1,68 +1,308 @@
 {% extends "base.html" %}
-{% from "_items.html" import item_row, section %}
-{% block title %}Aawara — internships & fellowships for Indian students{% endblock %}
+{% block title %}AAWARA — internships, fellowships & research for Indian students{% endblock %}
 {% block content %}
-  <section class="hero">
-    <h1>Aawara — every opportunity, everywhere</h1>
-    <p>
-      Arjun &amp; Vidya work 24/7 — they comb official company boards, Indian
-      government portals, IIT/IISER/NIT pages and global programs so you can
-      find internships, fellowships, scholarships and research opportunities
-      where <strong>Indian students are eligible</strong>. Rudra helps you
-      tailor your resume and prepare for interviews.
-    </p>
-    <div class="chips">
-      <span>{{ total }} stored opportunities</span>
-      <span>{{ fresh | length }} recently added</span>
-      <span>{{ matches | length }} best matches</span>
-      <span>{{ urgent | length }} deadlines soon</span>
-    </div>
-  </section>
 
-  <div class="bot-grid">
-    <div class="bot-card">
-      <h3>🏹 Arjun</h3>
-      <p class="muted small">Internships &amp; jobs — Indian startups, MNCs and global companies. Checks official ATS boards (Greenhouse, Lever, Ashby), YC startups and Indian startup listings every 2 hours.</p>
-      <a class="btn btn-small" href="/internships">Browse internships</a>
+<!-- ============ HERO ============ -->
+<section class="landing-hero" aria-labelledby="hero-heading">
+  <div class="hero-grid-bg" aria-hidden="true"></div>
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="wrap-land" style="position: relative;">
+    <div class="eyebrow"><span class="pulse" aria-hidden="true"></span>Live · updated every 2 hours · Arjun &amp; Vidya</div>
+    <h1 class="hero-title" id="hero-heading">
+      Students<br>Builders<br><span class="dreamers">Dreamers</span>
+    </h1>
+    <p class="hero-sub">
+      India's opportunity network. Internships, fellowships, research and
+      more — collected from official sources, checked for eligibility, and
+      ready for you.
+    </p>
+
+    <div class="hero-search" role="search">
+      <form action="/opportunities" method="get">
+        <input type="search" name="q" placeholder="Search opportunities…" aria-label="Search opportunities">
+        <button class="btn btn-black" type="submit">SEARCH</button>
+      </form>
+      <div class="sugg">
+        Try: <a href="/opportunities?q=AI research">AI research</a> ·
+        <a href="/opportunities?q=Fulbright">Fulbright</a> ·
+        <a href="/opportunities?q=hackathon">hackathon</a>
+      </div>
     </div>
-    <div class="bot-card">
-      <h3>🪷 Vidya</h3>
-      <p class="muted small">Fellowships, scholarships &amp; research — IIT/NIT/IISER programs, government portals (AICTE, NSP, NITI Aayog), and global programs (NSF REU, DAAD, Mitacs, Fulbright, Chevening).</p>
-      <a class="btn btn-small" href="/fellowships">Browse fellowships</a>
-    </div>
-    <div class="bot-card">
-      <h3>🧭 Rudra</h3>
-      <p class="muted small">Your AI career guide — interview prep, career direction, resume tailoring. Runs locally (or on your API key), advisory-only, never invents facts.</p>
-      <a class="btn btn-small" href="{{ url_for('rudra') }}">Talk to Rudra</a>
+
+    <div class="hero-stats">
+      <div class="hero-stat"><b>{{ total }}</b><span>opportunities</span></div>
+      <div class="hero-stat"><b>{{ fresh | length }}</b><span>new this cycle</span></div>
+      <div class="hero-stat"><b>{{ eligible }}</b><span>you're eligible for</span></div>
+      <div class="hero-stat"><b>{{ verified }}</b><span>verified checks</span></div>
     </div>
   </div>
 
-  {% if not g.user %}
-    <div class="notice">
-      <strong>Tip:</strong>
-      <a href="{{ url_for('register') }}">Create an account</a> to get
-      personalized match scores based on your degree, year, branch, CGPA and skills.
+  <div class="float-cards" aria-hidden="true">
+    <div class="fcard fcard-code">
+      <b>scout.py</b>
+      <span class="ln">▍</span><span class="kw">from</span> official <span class="st">import</span> sources<br>
+      <span class="ln">▍</span><span class="kw">while</span> True:<br>
+      <span class="ln">▍</span>&nbsp;&nbsp;<span class="st">"new_opportunity"</span> = fetch()<br>
+      <span class="ln">▍</span>&nbsp;&nbsp;verify() · dedupe() · publish()
     </div>
-  {% endif %}
+    {% if urgent %}
+    <div class="fcard fcard-deadline">
+      <span class="soon">DEADLINE SOON</span>
+      <span class="days">{{ urgent[0].title | truncate(16) }}</span>
+      <b>{{ urgent[0].deadline | days_left }} days left</b>
+    </div>
+    {% endif %}
+    {% if matches %}
+    <div class="fcard fcard-match">
+      <b>Your match</b>
+      <span class="pct">{{ matches[0][1] }}%</span>
+      <span class="bar"><i style="width: {{ matches[0][1] }}%"></i></span>
+      <span style="color: var(--gray);">{{ matches[0][0].title | truncate(22) }}</span>
+    </div>
+    {% endif %}
+    <div class="fcard fcard-org">
+      <span class="badge">IISc</span> · <span class="badge">IIT-B</span> · <span class="badge">MITACS</span><br>
+      <span class="badge">DAAD</span> · <span class="badge">NITI</span> · <span class="badge">YC</span>
+    </div>
+    <div class="fcard fcard-hack">
+      <b><span class="hack-em">HACK</span>ATHON</b>
+      <span>teams · prizes · 48 hrs</span>
+    </div>
+    <div class="fcard fcard-research">
+      <b>🔬 Research</b>
+      <span>labs looking for students</span>
+    </div>
+  </div>
+</section>
 
-  {% if matches %}
-    {{ section('Best matches for you') }}
-    {% for opp, score, status, breakdown in matches %}
-      {{ item_row(opp, score, status, [], breakdown) }}
-    {% endfor %}
-  {% endif %}
+<!-- ============ TICKER ============ -->
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track">
+    <span>INTERNSHIPS</span><span class="star">✦</span>
+    <span>FELLOWSHIPS</span><span class="star">✦</span>
+    <span>RESEARCH</span><span class="star">✦</span>
+    <span>SCHOLARSHIPS</span><span class="star">✦</span>
+    <span>HACKATHONS</span><span class="star">✦</span>
+    <span>JOBS</span><span class="star">✦</span>
+    <span>STARTUPS</span><span class="star">✦</span>
+    <span>UNIVERSITIES</span><span class="star">✦</span>
+    <span>INTERNSHIPS</span><span class="star">✦</span>
+    <span>FELLOWSHIPS</span><span class="star">✦</span>
+    <span>RESEARCH</span><span class="star">✦</span>
+    <span>SCHOLARSHIPS</span><span class="star">✦</span>
+    <span>HACKATHONS</span><span class="star">✦</span>
+    <span>JOBS</span><span class="star">✦</span>
+    <span>STARTUPS</span><span class="star">✦</span>
+    <span>UNIVERSITIES</span><span class="star">✦</span>
+  </div>
+</div>
 
-  {% if fresh %}
-    {{ section('Newly collected', fresh | length) }}
-    {% for opp in fresh %}
-      {{ item_row(opp, opp.match_score, opp.eligibility_status, [], None) }}
-    {% endfor %}
-  {% endif %}
+<!-- ============ FEATURES ============ -->
+<section class="landing-section" id="features">
+  <div class="wrap-land">
+    <p class="section-kicker">How AAWARA works</p>
+    <h2 class="landing-h2">Everything you need<br>to find <em>what's next.</em></h2>
+    <p class="landing-sub">
+      Two scouts work around the clock so you don't have to search the
+      whole internet yourself.
+    </p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <span class="fnum">01 — DISCOVER</span>
+        <h3>24/7 scouting</h3>
+        <p>Arjun &amp; Vidya comb official boards, government portals and
+           global programs every 2 hours — startups, universities, labs
+           and foundations included.</p>
+        <a class="fcta" href="{{ url_for('stats') }}">SEE THE RUN LOG →</a>
+      </div>
+      <div class="feature-card">
+        <span class="fnum">02 — MATCH</span>
+        <h3>Eligibility engine</h3>
+        <p>CGPA, branch, year, citizenship — every opportunity is scored
+           against your profile with a transparent breakdown. No black box.</p>
+        <a class="fcta" href="{{ url_for('profile') }}">BUILD YOUR PROFILE →</a>
+      </div>
+      <div class="feature-card">
+        <span class="fnum">03 — VERIFY</span>
+        <h3>Official sources only</h3>
+        <p>Each listing keeps its source link. Deadlines and eligibility
+           are checked, and nothing is invented — unknown stays unknown.</p>
+        <a class="fcta" href="{{ url_for('resources') }}">DIRECT SOURCES →</a>
+      </div>
+      <div class="feature-card">
+        <span class="fnum">04 — TRACK</span>
+        <h3>Apply &amp; track</h3>
+        <p>Save, apply, tailor your resume per JD, and autofill application
+           forms straight from your profile.</p>
+        <a class="fcta" href="{{ url_for('applications_dashboard') }}">YOUR APPLICATIONS →</a>
+      </div>
+    </div>
+  </div>
+</section>
 
-  {% if urgent %}
-    {{ section('Deadlines soon', urgent | length) }}
-    {% for opp in urgent %}
-      {{ item_row(opp, opp.match_score, opp.eligibility_status, [], None) }}
-    {% endfor %}
-  {% endif %}
+<!-- ============ OPPORTUNITIES (real data) ============ -->
+<section class="landing-section" id="opportunities" style="background: var(--paper); color: var(--ink); border-radius: 28px; margin: 0 16px;">
+  <div class="wrap-land" style="padding: 24px 20px;">
+    <p class="section-kicker on-light">Right now</p>
+    <h2 class="landing-h2">Find your next <em class="on-light">opportunity.</em></h2>
+    <p class="landing-sub" style="color: #6b6b6b;">Freshly collected listings, matched against your profile.</p>
+
+    {% if matches %}
+    <div class="opp-grid" style="margin-bottom: 40px;">
+      {% for opp, score, status, breakdown in matches %}
+      <article class="opp-card">
+        <div class="opp-org">
+          {{ opp.organization | default('Unknown org', true) }}
+          {% if opp.official_url %}<span class="tick" title="Official source">✓</span>{% endif %}
+        </div>
+        <h3><a href="{{ url_for('detail', opportunity_id=opp.id) }}">{{ opp.title }}</a></h3>
+        <div class="opp-meta">
+          <span class="chip">{{ opp.type | default('opportunity', true) }}</span>
+          {% if opp.location %}<span class="chip">{{ opp.location }}</span>{% endif %}
+          {% if opp.country %}<span class="chip">{{ opp.country }}</span>{% endif %}
+          {% if opp.deadline %}
+            {% set dl = opp.deadline | days_left %}
+            {% if dl is not none and dl < 30 %}
+              <span class="chip dl">{{ dl }}d left</span>
+            {% else %}
+              <span class="chip">deadline {{ opp.deadline }}</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="opp-foot">
+          <span class="opp-score">{{ score }}% match</span>
+          <a class="opp-link" href="{{ url_for('detail', opportunity_id=opp.id) }}">VIEW <span class="arrow">→</span></a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if fresh %}
+    <p class="section-kicker on-light">Just collected</p>
+    <div class="opp-grid">
+      {% for opp in fresh %}
+      <article class="opp-card">
+        <div class="opp-org">
+          {{ opp.organization | default('Unknown org', true) }}
+          {% if opp.official_url %}<span class="tick" title="Official source">✓</span>{% endif %}
+        </div>
+        <h3><a href="{{ url_for('detail', opportunity_id=opp.id) }}">{{ opp.title }}</a></h3>
+        <div class="opp-meta">
+          <span class="chip">{{ opp.type | default('opportunity', true) }}</span>
+          {% if opp.location %}<span class="chip">{{ opp.location }}</span>{% endif %}
+          {% if opp.country %}<span class="chip">{{ opp.country }}</span>{% endif %}
+          {% if opp.deadline %}
+            {% set dl = opp.deadline | days_left %}
+            {% if dl is not none and dl < 30 %}
+              <span class="chip dl">{{ dl }}d left</span>
+            {% else %}
+              <span class="chip">deadline {{ opp.deadline }}</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="opp-foot">
+          {% if opp.match_score %}<span class="opp-score">{{ opp.match_score }}% match</span>{% endif %}
+          <a class="opp-link" href="{{ url_for('detail', opportunity_id=opp.id) }}">VIEW <span class="arrow">→</span></a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="text-align: center; margin-top: 48px;">
+      <a class="btn btn-black" href="{{ url_for('opportunities_list') }}">VIEW ALL OPPORTUNITIES →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CATEGORIES ============ -->
+<section class="landing-section" id="categories">
+  <div class="wrap-land">
+    <p class="section-kicker">Browse</p>
+    <h2 class="landing-h2">One network.<br><em>Every kind</em> of opportunity.</h2>
+    <p class="landing-sub">Jump straight to what you're hunting for.</p>
+    <div class="cat-grid">
+      {% for label, data in categories.items() %}
+      <a class="cat-block" href="{{ data.href }}">
+        <span class="cat-emoji">{{ data.emoji }}</span>
+        <b>{{ label }}</b>
+        <span>{{ data.count }} live listings</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ============ TRUST ============ -->
+<section class="landing-section" id="trust" style="background: var(--paper); color: var(--ink); border-radius: 28px; margin: 0 16px;">
+  <div class="wrap-land" style="padding: 24px 20px;">
+    <div class="trust-grid">
+      <div>
+        <p class="section-kicker on-light">Verified</p>
+        <h2 class="landing-h2">Not just opportunities.<br><em class="on-light">Verified</em> opportunities.</h2>
+        <p class="landing-sub" style="color: #6b6b6b;">
+          We work on the hard parts — checking sources, links and deadlines —
+          so what you see is what's real.
+        </p>
+        <ul class="trust-check">
+          <li><span class="check">✓</span> Official sources first — every listing links back to its origin.</li>
+          <li><span class="check">✓</span> Deadlines and eligibility verified, never invented.</li>
+          <li><span class="check">✓</span> No dead links — verification runs keep listings honest.</li>
+          <li><span class="check">✓</span> Arjun &amp; Vidya's run logs are public on the stats page.</li>
+        </ul>
+      </div>
+      <div class="trust-stats">
+        <div class="trust-row">
+          <span class="tnum">{{ verified }}<small></small></span>
+          <span class="tlabel"><b>verification checks</b>completed on live listings</span>
+        </div>
+        <div class="trust-row">
+          <span class="tnum">{{ official }}<small>/{{ total }}</small></span>
+          <span class="tlabel"><b>listings with official source</b>linked from their origin</span>
+        </div>
+        <div class="trust-row">
+          <span class="tnum">{{ with_deadline }}<small></small></span>
+          <span class="tlabel"><b>listings with deadlines</b>tracked in the deadline watch</span>
+        </div>
+        {% if last_run %}
+        <div class="trust-row">
+          <span class="tnum">{{ last_run }}</span>
+          <span class="tlabel"><b>last scout run</b>kept fresh on a 2-hour cycle</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROFILE CTA ============ -->
+<section class="landing-section" id="profile">
+  <div class="wrap-land">
+    <div class="profile-cta">
+      <div class="pc-left">
+        <h2>Make AAWARA yours.</h2>
+        <p>Add your degree, branch, year, CGPA and skills. Every
+           opportunity gets a personal match score — and a reason why.</p>
+      </div>
+      {% if g.user %}
+      <a class="btn btn-black" href="{{ url_for('profile') }}">EDIT MY PROFILE →</a>
+      {% else %}
+      <a class="btn btn-black" href="{{ url_for('register') }}">CREATE ACCOUNT →</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="landing-section" id="start">
+  <div class="wrap-land">
+    <div class="final-cta">
+      <div class="hero-grid-bg" aria-hidden="true"></div>
+      <h2>Your next opportunity<br>is out there.</h2>
+      <a class="btn btn-black" href="{{ url_for('opportunities_list') }}">START EXPLORING →</a>
+    </div>
+  </div>
+</section>
+
 {% endblock %}
