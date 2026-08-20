@@ -5,6 +5,13 @@ import pytest
 from src import db
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    from src.webapp import views
+    views._AUTH_ATTEMPTS.clear()
+    yield
+
+
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))

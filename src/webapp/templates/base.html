@@ -3,8 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="AAWARA — internships, fellowships and research programs for Indian students, found 24/7 by Arjun & Vidya.">
+  <meta name="description" content="{% block meta_description %}AAWARA — internships, fellowships and research programs for Indian students, found 24/7 by Arjun &amp; Vidya.{% endblock %}">
   <meta name="theme-color" content="#00e676">
+  <link rel="canonical" href="{% block canonical %}{{ request.url }}{% endblock %}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AAWARA">
+  <meta property="og:title" content="{% block og_title %}AAWARA — Opportunities for Indian students{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Internships, fellowships, scholarships and research found 24/7 by Arjun &amp; Vidya.{% endblock %}">
+  <meta property="og:url" content="{% block og_url %}{{ request.url }}{% endblock %}">
+  <meta property="og:image" content="{{ request.url_root.rstrip('/') }}/static/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block tw_title %}AAWARA{% endblock %}">
+  <meta name="twitter:description" content="{% block tw_description %}Opportunities for Indian students, verified and local.{% endblock %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">

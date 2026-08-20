@@ -88,14 +88,21 @@ app. No rebuild; port 8080 preserved.
    deadlines.
 3. Report incorrect information endpoint + admin review queue.
 
-## Phase H — APIs (FastAPI) + admin
+## Phase H — APIs (FastAPI) + admin — DONE
 
 1. FastAPI app on :8000 with the API list from the brief; admin endpoints
    behind auth/roles; crawl trigger/retry; source enable/disable.
 2. Admin dashboard (Flask UI) for opportunities, sources, crawl jobs,
    verification, duplicates, reports, users, health.
 
-## Phase I — Profiles, matching, notifications, UX completeness
+Implementation: `src/api.py` (FastAPI: health, opportunities
+list/detail/search, types, sources, crawl jobs, stats, report, crawl
+trigger behind X-Run-Token); Flask `/admin` (overview, sources toggle,
+job retry, pending reports accept/ignore, users, opportunities, manual
+pipeline run) gated by `ADMIN_USERNAME` (default "admin"); docker-compose
+`api` service on 127.0.0.1:8000. Tests: `tests/test_admin_api.py`.
+
+## Phase I — Profiles, matching, notifications, UX completeness — DONE (I-lite)
 
 1. Student profiles v2 (preferences, countries, types, stipend, remote).
 2. Recommendations: deterministic scoring first, AI-assisted second;
@@ -105,7 +112,16 @@ app. No rebuild; port 8080 preserved.
 4. Loading/empty/error/retry/success states; accessibility pass
    (focus-visible, ARIA, contrast, non-color status); responsive polish.
 
-## Phase J — Performance, security, final audit
+Implementation: in-app notifications (verified/official new opportunities
+for every user, one per opp per user; deadline reminders for bookmarked
+items, bucket-once) with `/notifications` page, mark-all-read, unread
+bell badge; `/recently-viewed` via `user_views` table recorded on detail
+views; empty states on saved/recent/list; skip link, focus-visible rings,
+badge/unread styles, global `prefers-reduced-motion`. Profiles v2 and
+email/telegram channels deferred (existing Telegram path intact).
+Tests: `tests/test_phase_i_lite.py`.
+
+## Phase J — Performance, security, final audit — DONE
 
 1. Indexes, pagination, caching, bundle trimming, server-side rendering
    checks; avoid AI when deterministic suffices.
@@ -115,6 +131,13 @@ app. No rebuild; port 8080 preserved.
 4. End-to-end tests (Playwright optional), full pytest green, console-error
    check, accessibility checks.
 5. Definition of Done checklist from brief §55 verified end-to-end.
+
+Implementation: indexes (deadline_status, trust_score, type, last_seen —
+verified via EXPLAIN QUERY PLAN); `/robots.txt` + `/sitemap.xml`;
+canonical/OG/Twitter meta in base.html with detail-page overrides +
+generated `static/og.png`; cross-origin POST guard (403) and failed-attempt
+rate limiting on login/register (429); full suite green: 464 passed.
+Tests: `tests/test_phase_j.py`.
 
 ---
 

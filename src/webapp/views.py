@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import secrets
+import time
 
 from flask import (
     Response,
@@ -85,7 +86,38 @@ def _set_session_cookie(response, token):
     return response
 
 
+_AUTH_ATTEMPTS = {}
+_AUTH_MAX_ATTEMPTS = 10
+_AUTH_WINDOW_SECONDS = 600
+
+
+def _auth_is_blocked():
+    key = request.remote_addr or "unknown"
+    now = time.time()
+    window = [t for t in _AUTH_ATTEMPTS.get(key, []) if now - t < _AUTH_WINDOW_SECONDS]
+    _AUTH_ATTEMPTS[key] = window
+    return len(window) >= _AUTH_MAX_ATTEMPTS
+
+
+def _auth_note_failure():
+    key = request.remote_addr or "unknown"
+    _AUTH_ATTEMPTS.setdefault(key, []).append(time.time())
+
+
 def register_routes(app):
+
+    @app.before_request
+    def guard_cross_origin_posts():
+        if request.method != "POST":
+            return None
+        origin = request.headers.get("Origin")
+        if not origin:
+            return None
+        host = request.host
+        origin_host = origin.split("://", 1)[-1].split("/", 1)[0]
+        if origin_host != host:
+            abort(403)
+        return None
 
     @app.route("/")
     def index():
@@ -416,6 +448,52 @@ def register_routes(app):
             data["run_error"] = str(exc)[:500]
         return render_template("admin.html", **data, user=g.user)
 
+    @app.route("/robots.txt")
+    def robots():
+        base = request.url_root.rstrip("/")
+        body = (
+            "User-agent: *\n"
+            "Allow: /\n"
+            f"Sitemap: {base}/sitemap.xml\n"
+        )
+        return (body, 200, {"Content-Type": "text/plain; charset=utf-8"})
+
+    @app.route("/sitemap.xml")
+    def sitemap():
+        base = request.url_root.rstrip("/")
+        static_urls = [
+            (base + url_for("index"), "1.0", "daily"),
+            (base + url_for("opportunities_list"), "0.9", "daily"),
+            (base + "/internships", "0.8", "daily"),
+            (base + "/fellowships", "0.8", "daily"),
+            (base + url_for("top"), "0.6", "weekly"),
+            (base + url_for("urgent"), "0.6", "daily"),
+            (base + url_for("resources"), "0.5", "weekly"),
+        ]
+        entries = []
+        for loc, priority, freq in static_urls:
+            entries.append(
+                f"  <url><loc>{loc}</loc><priority>{priority}</priority>"
+                f"<changefreq>{freq}</changefreq></url>"
+            )
+        for opp in db.list_opportunities():
+            if not deadlines.is_active(opp):
+                continue
+            loc = url_for("detail", opportunity_id=opp["id"], _external=True)
+            lastmod = (opp.get("last_seen") or opp.get("first_seen") or "")[:10]
+            entries.append(
+                f"  <url><loc>{loc}</loc>"
+                f"<lastmod>{lastmod}</lastmod>"
+                f"<priority>0.7</priority></url>"
+            )
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            + "\n".join(entries)
+            + "\n</urlset>\n"
+        )
+        return (body, 200, {"Content-Type": "application/xml; charset=utf-8"})
+
     @app.route("/manifest.json")
     def webmanifest():        return jsonify({
             "name": "Aawara — Internships & Fellowships for Indian students",
@@ -644,17 +722,27 @@ def register_routes(app):
             return redirect(url_for("index"))
         error = None
         if request.method == "POST":
+            if _auth_is_blocked():
+                return (
+                    render_template("register.html", user=g.user,
+                                    error="Too many attempts. Try again in 10 minutes."),
+                    429,
+                )
             username = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
             confirm = request.form.get("confirm") or ""
             if len(username) < 3:
                 error = "Username must be at least 3 characters."
+                _auth_note_failure()
             elif len(password) < 8:
                 error = "Password must be at least 8 characters."
+                _auth_note_failure()
             elif password != confirm:
                 error = "Passwords do not match."
+                _auth_note_failure()
             elif db.get_user_by_username(username):
                 error = "That username is already taken."
+                _auth_note_failure()
             else:
                 seed = store.load_profile()
                 user_id = db.create_user(
@@ -671,12 +759,19 @@ def register_routes(app):
             return redirect(url_for("index"))
         error = None
         if request.method == "POST":
+            if _auth_is_blocked():
+                return (
+                    render_template("login.html", user=g.user,
+                                    error="Too many attempts. Try again in 10 minutes."),
+                    429,
+                )
             username = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
             user = db.get_user_by_username(username)
             if user and auth.verify_password(password, user.get("password_hash")):
                 response = redirect(_safe_next(request.args.get("next")) or url_for("index"))
                 return _set_session_cookie(response, auth.start_session(user["id"]))
+            _auth_note_failure()
             error = "Invalid username or password."
         return render_template("login.html", user=g.user, error=error)
 

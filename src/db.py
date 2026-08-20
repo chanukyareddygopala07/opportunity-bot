@@ -84,6 +84,25 @@ def _migrate(conn):
     ):
         if column not in opp_columns:
             conn.execute(f"ALTER TABLE opportunities ADD COLUMN {column} {ddl}")
+    for index, ddl in (
+        ("idx_opp_deadline_status",
+         "CREATE INDEX IF NOT EXISTS idx_opp_deadline_status "
+         "ON opportunities(deadline_status)"),
+        ("idx_opp_trust_score",
+         "CREATE INDEX IF NOT EXISTS idx_opp_trust_score "
+         "ON opportunities(trust_score)"),
+        ("idx_opp_type",
+         "CREATE INDEX IF NOT EXISTS idx_opp_type ON opportunities(type)"),
+        ("idx_opp_last_seen",
+         "CREATE INDEX IF NOT EXISTS idx_opp_last_seen "
+         "ON opportunities(last_seen)"),
+    ):
+        if index not in {
+            row["name"] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }:
+            conn.execute(ddl)
     run_columns = {row["name"] for row in conn.execute("PRAGMA table_info(discovery_runs)")}
     if "crawler" not in run_columns:
         conn.execute("ALTER TABLE discovery_runs ADD COLUMN crawler TEXT")

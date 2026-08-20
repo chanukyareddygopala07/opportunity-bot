@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ opp.title }} — Aawara{% endblock %}
+{% block meta_description %}{{ opp.title }} — {{ opp.organization or 'opportunity' }}{% if opp.deadline %} · deadline {{ opp.deadline }}{% endif %} on AAWARA.{% endblock %}
+{% block og_title %}{{ opp.title }} — AAWARA{% endblock %}
+{% block og_description %}{{ opp.title }} by {{ opp.organization or 'unknown' }}{% if opp.deadline %} · deadline {{ opp.deadline }}{% endif %}.{% endblock %}
+{% block canonical %}{{ url_for('detail', opportunity_id=opp.id, _external=True) }}{% endblock %}
+{% block og_url %}{{ url_for('detail', opportunity_id=opp.id, _external=True) }}{% endblock %}
 {% block content %}
   <a class="btn btn-small" href="{{ request.referrer or url_for('opportunities_list') }}">‹ Back</a>
 
