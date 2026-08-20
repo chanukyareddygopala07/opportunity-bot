@@ -44,7 +44,16 @@
   </form>
 
   {% if not scored %}
-    <p class="muted">No opportunities found.</p>
+    <div class="empty-state">
+      {% if query %}
+        <p>No opportunities match “{{ query }}”.</p>
+        <p class="small muted">Try a broader search, or clear the filters below.</p>
+      {% else %}
+        <p>No opportunities here yet.</p>
+        <p class="small muted">The scouts collect new ones every few hours — check back soon.</p>
+      {% endif %}
+      <a class="btn" href="{{ request.path }}">Reset filters</a>
+    </div>
   {% else %}
     {% for opp, score, status, reasons, missing, breakdown in scored %}
       {{ item_row(opp, score, status, reasons, breakdown) }}

@@ -9,6 +9,7 @@ EXPECTED_TABLES = {
     "verifications", "ai_assessments", "sessions", "bookmarks",
     "discovery_runs", "source_health", "filtering_decisions", "raw_responses",
     "chat_messages", "applications", "crawl_jobs", "reports", "opportunities_fts",
+    "user_views",
 }
 
 SAMPLE_OPP = {

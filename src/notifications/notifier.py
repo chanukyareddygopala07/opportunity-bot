@@ -150,16 +150,115 @@ def send_deadline_reminders(profile=None, dry_run=False):
     return sent
 
 
+def send_new_opportunities_in_app():
+    """In-app notifications for every user who matches a new opportunity.
+
+    Quiet by default: only verified/official, non-eligible-excluded items.
+    Each opportunity alerts each user once.
+    """
+    users = _all_users()
+    sent = 0
+    for opp in db.list_opportunities():
+        if opp.get("eligibility_status") == "not_eligible":
+            continue
+        if opp.get("verification_status") not in ("verified", "official"):
+            continue
+        label = formatting.eligibility_label(opp.get("eligibility_status"), opp)
+        text = f"New opportunity — {label}: {opp.get('title')}"
+        for user in users:
+            if _already_notified_for_user(opp["id"], user["id"], "new_opportunity"):
+                continue
+            db.insert_notification(
+                opp["id"], "new_opportunity", text,
+                channel="in_app", delivered=0, user_id=user["id"],
+            )
+            sent += 1
+    return sent
+
+
+def send_deadline_reminders_in_app():
+    """In-app deadline reminders for users with saved/bookmarked interests.
+
+    Only for opportunities the user has bookmarked or viewed, so we never
+    spam users with things they never showed interest in.
+    """
+    sent = 0
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT b.user_id, d.opportunity_id, d.deadline, "
+            "d.notified_30d, d.notified_14d, d.notified_7d, d.notified_3d, "
+            "d.notified_24h, d.expired "
+            "FROM deadlines d "
+            "JOIN bookmarks b ON b.opportunity_id = d.opportunity_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    for row in rows:
+        deadline = row["deadline"]
+        if not deadline:
+            continue
+        days_left = formatting.deadline_days_left(deadline)
+        if days_left is None or days_left < 0:
+            continue
+        bucket = bucket_for(days_left)
+        if not bucket or row[bucket]:
+            continue
+        opp = db.get_opportunity(row["opportunity_id"])
+        if not opp or opp.get("eligibility_status") == "not_eligible":
+            continue
+        if _already_notified_for_user(
+            row["opportunity_id"], row["user_id"], "deadline_reminder"
+        ):
+            continue
+        text = (f"Deadline in {days_left} day{'s' if days_left != 1 else ''} "
+                f"({deadline}): {opp.get('title')}")
+        db.insert_notification(
+            row["opportunity_id"], "deadline_reminder", text,
+            channel="in_app", delivered=0, user_id=row["user_id"],
+        )
+        db.mark_deadline_notified(row["opportunity_id"], bucket)
+        sent += 1
+    return sent
+
+
+def _all_users():
+    conn = db.get_connection()
+    try:
+        rows = conn.execute("SELECT id FROM users").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _already_notified_for_user(opportunity_id, user_id, kind):
+    conn = db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM notifications "
+            "WHERE opportunity_id = ? AND user_id = ? AND kind = ? LIMIT 1",
+            (opportunity_id, user_id, kind),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def run(dry_run=False):
     db.init_db()
+    in_app_new = send_new_opportunities_in_app()
+    in_app_reminders = send_deadline_reminders_in_app()
     if os.environ.get("SEND_TELEGRAM", "true").lower() == "false":
         print("telegram disabled (web mode); opportunities are stored, "
-              "no messages sent")
+              f"no messages sent (in_app_new={in_app_new} "
+              f"in_app_reminders={in_app_reminders})")
         return 0
     profile = store.load_profile()
     new_sent = send_new_opportunities(profile, dry_run=dry_run)
     reminder_sent = send_deadline_reminders(profile, dry_run=dry_run)
-    print(f"new={new_sent} reminders={reminder_sent}" + (" (dry run)" if dry_run else ""))
+    print(f"new={new_sent} reminders={reminder_sent}"
+          + (f" in_app_new={in_app_new} in_app_reminders={in_app_reminders}" if dry_run else "")
+          + (" (dry run)" if dry_run else ""))
     return new_sent + reminder_sent
 
 

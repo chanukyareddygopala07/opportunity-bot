@@ -204,6 +204,12 @@ def _migrate(conn):
             "ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, "
             "provider TEXT, created_at TEXT)"
         )),
+        ("user_views", (
+            "CREATE TABLE IF NOT EXISTS user_views ("
+            "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+            "opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) "
+            "ON DELETE CASCADE, viewed_at TEXT, PRIMARY KEY (user_id, opportunity_id))"
+        )),
     ):
         if name not in tables:
             conn.execute(ddl)
@@ -955,15 +961,91 @@ def get_ai_assessment(opportunity_id):
 
 # --- notifications / deadlines ---
 
-def insert_notification(opportunity_id, kind, message, channel="telegram", delivered=0):
+def insert_notification(opportunity_id, kind, message, channel="telegram", delivered=0, user_id=None):
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO notifications (opportunity_id, channel, kind, message, sent_at, delivered) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (opportunity_id, channel, kind, message, now_iso(), delivered),
+            "INSERT INTO notifications (opportunity_id, user_id, channel, kind, message, sent_at, delivered) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (opportunity_id, user_id, channel, kind, message, now_iso(), delivered),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def list_user_notifications(user_id, limit=50, include_read=False):
+    conn = get_connection()
+    try:
+        sql = (
+            "SELECT n.*, o.title, o.deadline_status, o.trust_score, "
+            "o.verification_status, o.type "
+            "FROM notifications n "
+            "LEFT JOIN opportunities o ON o.id = n.opportunity_id "
+            "WHERE n.user_id = ?"
+        )
+        if not include_read:
+            sql += " AND n.delivered = 0"
+        sql += " ORDER BY n.id DESC LIMIT ?"
+        return [dict(r) for r in conn.execute(sql, (user_id, limit)).fetchall()]
+    finally:
+        conn.close()
+
+
+def unread_notification_count(user_id):
+    conn = get_connection()
+    try:
+        return int(conn.execute(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND delivered = 0",
+            (user_id,),
+        ).fetchone()[0])
+    finally:
+        conn.close()
+
+
+def mark_user_notifications_read(user_id, notification_ids=None):
+    conn = get_connection()
+    try:
+        if notification_ids:
+            conn.executemany(
+                "UPDATE notifications SET delivered = 1 WHERE id = ? AND user_id = ?",
+                [(nid, user_id) for nid in notification_ids],
+            )
+        else:
+            conn.execute(
+                "UPDATE notifications SET delivered = 1 WHERE user_id = ? AND delivered = 0",
+                (user_id,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_view(user_id, opportunity_id):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO user_views (user_id, opportunity_id, viewed_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (user_id, opportunity_id) "
+            "DO UPDATE SET viewed_at = excluded.viewed_at",
+            (user_id, opportunity_id, now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def recently_viewed(user_id, limit=8):
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT o.*, v.viewed_at FROM user_views v "
+            "JOIN opportunities o ON o.id = v.opportunity_id "
+            "WHERE v.user_id = ? AND o.duplicate_of IS NULL "
+            "ORDER BY v.viewed_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 

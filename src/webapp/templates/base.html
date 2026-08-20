@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
     <div class="wrap nav">
       <a class="brand" href="{{ url_for('index') }}"><span class="brand-dot"></span>AAWARA</a>
@@ -26,6 +27,8 @@
       </nav>
       <div class="user">
         {% if g.user %}
+          <a href="{{ url_for('notifications') }}" aria-label="Notifications"
+             {% if g.unread %}class="has-badge"{% endif %}>🔔{% if g.unread %}<span class="badge">{{ g.unread }}</span>{% endif %}</a>
           <a href="{{ url_for('profile') }}">{{ g.user.username }}</a>
           <a href="{{ url_for('rudra') }}">Rudra</a>
           <a href="{{ url_for('saved') }}">Saved</a>
@@ -39,7 +42,7 @@
       </div>
     </div>
   </header>
-  <main>
+  <main id="main">
     {% block content %}{% endblock %}
   </main>
   <footer class="footer">
@@ -72,6 +75,8 @@
         {% if g.user %}
           <a href="{{ url_for('profile') }}">Profile</a>
           <a href="{{ url_for('saved') }}">Saved</a>
+          <a href="{{ url_for('recently_viewed') }}">Recently viewed</a>
+          <a href="{{ url_for('notifications') }}">Notifications{% if g.unread %} ({{ g.unread }}){% endif %}</a>
           <a href="{{ url_for('stats') }}">Stats</a>
           {% if g.user.username == (admin_username | default('admin')) %}
             <a href="{{ url_for('admin_dashboard') }}">Admin</a>

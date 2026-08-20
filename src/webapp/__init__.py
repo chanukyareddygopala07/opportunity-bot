@@ -30,6 +30,7 @@ def create_app():
     @app.before_request
     def load_user():
         g.user = auth.load_user(request.cookies.get(auth.SESSION_COOKIE))
+        g.unread = db.unread_notification_count(g.user["id"]) if g.user else 0
 
     @app.template_filter("days_left")
     def days_left(value):

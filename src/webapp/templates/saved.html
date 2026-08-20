@@ -1,11 +1,20 @@
 {% extends "base.html" %}
 {% from "_items.html" import item_row, section %}
-{% block title %}Saved — Aawara{% endblock %}
+{% block title %}{{ 'Recently viewed' if kind == 'recent' else 'Saved' }} — AAWARA{% endblock %}
 {% block content %}
-  {{ section('Your saved opportunities', scored | length) }}
+  {{ section('Your recently viewed' if kind == 'recent' else 'Your saved opportunities', scored | length) }}
   {% if not scored %}
-    <p class="muted">Nothing saved yet. Open any opportunity and press
-      “Save” to bookmark it here.</p>
+    <div class="empty-state">
+      {% if kind == 'recent' %}
+        <p>Nothing viewed yet.</p>
+        <p class="small muted">Open any opportunity and it will appear here so you can find it again.</p>
+        <a class="btn btn-primary" href="/">Browse opportunities</a>
+      {% else %}
+        <p>Nothing saved yet.</p>
+        <p class="small muted">Open any opportunity and press “Save” to bookmark it here.</p>
+        <a class="btn btn-primary" href="/">Browse opportunities</a>
+      {% endif %}
+    </div>
   {% endif %}
   {% for opp, score, status, reasons, missing, breakdown in scored %}
     {{ item_row(opp, score, status, reasons, breakdown) }}

@@ -549,6 +549,56 @@ input, select {
   font-family: var(--font);
 }
 input:focus, select:focus { outline: 2px solid var(--neon); outline-offset: 1px; border-color: var(--neon); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--neon);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--neon);
+  color: var(--ink);
+  font-weight: 800;
+  padding: 10px 16px;
+  z-index: 1000;
+  border-radius: 0 0 8px 0;
+}
+.skip-link:focus { left: 0; }
+
+.user .has-badge { position: relative; }
+.user .badge {
+  position: absolute;
+  top: -6px;
+  right: -9px;
+  background: var(--neon);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 5px;
+  min-width: 15px;
+  text-align: center;
+}
+
+.empty-state {
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 40px 24px;
+  text-align: center;
+  margin: 18px 0;
+}
+.empty-state p { margin: 4px 0; }
+.empty-state .btn { margin-top: 12px; }
+
+.card.unread { border-left: 4px solid var(--neon); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
 
 .pagination { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
 

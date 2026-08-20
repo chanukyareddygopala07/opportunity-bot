@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Notifications — AAWARA{% endblock %}
+{% block content %}
+  <section class="hero">
+    <h1>Notifications</h1>
+    <p>New opportunities that match you, and deadline reminders for saved items.</p>
+  </section>
+
+  {% if notes %}
+    <form method="post" action="/notifications" class="toolbar" style="margin-bottom: 14px;">
+      <button class="btn btn-small" type="submit">Mark all as read</button>
+    </form>
+    <div class="list">
+      {% for n in notes %}
+        <article class="card {{ 'unread' if not n.delivered }}">
+          <div class="card-body">
+            <div class="row between">
+              <a class="card-title" href="{{ '/o/%d' | format(n.opportunity_id) if n.opportunity_id else '#' }}">{{ n.message }}</a>
+              <span class="small muted">{{ n.sent_at | short_date }}</span>
+            </div>
+            {% if n.title %}
+              <p class="small muted">{{ n.title }}
+                {% if n.deadline_status %}<span class="chip">{{ n.deadline_status }}</span>{% endif %}
+                {% if n.trust_score %}<span class="chip">{{ n.trust_score }}% trust</span>{% endif %}
+              </p>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p>No notifications yet.</p>
+      <p class="small muted">New matching opportunities and deadline reminders will appear here.</p>
+      <a class="btn btn-primary" href="/">Browse opportunities</a>
+    </div>
+  {% endif %}
+{% endblock %}

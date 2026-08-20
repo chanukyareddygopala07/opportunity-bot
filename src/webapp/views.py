@@ -254,11 +254,41 @@ def register_routes(app):
             "saved.html", scored=scored, user=g.user,
         )
 
+    @app.route("/notifications", methods=["GET", "POST"])
+    def notifications():
+        if not g.user:
+            return redirect(url_for("login", next=request.path))
+        if request.method == "POST":
+            ids = request.form.getlist("notification_ids")
+            db.mark_user_notifications_read(
+                g.user["id"], [int(i) for i in ids] if ids else None
+            )
+            return redirect(url_for("notifications"))
+        notes = db.list_user_notifications(
+            g.user["id"], include_read=True
+        )
+        unread = db.unread_notification_count(g.user["id"])
+        return render_template(
+            "notifications.html", notes=notes, unread=unread, user=g.user,
+        )
+
+    @app.route("/recently-viewed")
+    def recently_viewed():
+        if not g.user:
+            return redirect(url_for("login", next=request.path))
+        items = db.recently_viewed(g.user["id"])
+        scored = helpers.score_items(items, g.user)
+        return render_template(
+            "saved.html", scored=scored, user=g.user, kind="recent",
+        )
+
     @app.route("/o/<int:opportunity_id>")
     def detail(opportunity_id):
         opp = db.get_opportunity(opportunity_id)
         if not opp:
             abort(404)
+        if g.user:
+            db.record_view(g.user["id"], opportunity_id)
         score, status, reasons, missing, breakdown = helpers.score_item(opp, g.user)
         ai = db.get_ai_assessment(opportunity_id)
         bookmarked = bool(g.user) and db.is_bookmarked(g.user["id"], opportunity_id)
