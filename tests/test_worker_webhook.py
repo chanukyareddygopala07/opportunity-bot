@@ -50,8 +50,10 @@ class TestWorkerPipeline:
             "maintenance": {"expired": 0, "pruned_logs": 0,
                             "pruned_errors": 0, "pruned_notifications": 0},
         }
-        assert {k: v for k, v in summary.items() if k != "discovery"} == expected
+        assert {k: v for k, v in summary.items() if k not in ("discovery", "crawl_queue")} == expected
         assert "discovery" in summary
+        assert summary["crawl_queue"]["queued"] > 0
+        assert summary["crawl_queue"]["settled"] >= 0
         assert calls == ["fellowship", "internship", "notifier"]
         out = capsys.readouterr().out
         assert json.loads(out) == summary

@@ -296,14 +296,24 @@ def register_routes(app):
             ]
             runs = [
                 dict(r) for r in conn.execute(
-                    "SELECT scout, source_name, raw_items, stored_new, duplicates, "
+                    "SELECT scout, source_name, crawler, raw_items, stored_new, duplicates, "
                     "eligible, unclear, not_eligible, error, started_at "
                     "FROM discovery_runs ORDER BY id DESC LIMIT 20"
                 ).fetchall()
             ]
+            jobs = [
+                dict(r) for r in conn.execute(
+                    "SELECT source_name, crawler, priority, status, retry_count, "
+                    "items_found, items_created, duplicates_found, error, completed_at "
+                    "FROM crawl_jobs ORDER BY id DESC LIMIT 20"
+                ).fetchall()
+            ]
         finally:
             conn.close()
-        return render_template("stats.html", stats=payload, logs=logs, runs=runs, user=g.user)
+        return render_template(
+            "stats.html", stats=payload, logs=logs, runs=runs, jobs=jobs,
+            user=g.user,
+        )
 
     @app.route("/resume", methods=["GET", "POST"])
     @_login_required

@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS discovery_runs (
     source_name     TEXT,
     source_url      TEXT,
     method          TEXT,
+    crawler         TEXT,
     raw_items       INTEGER DEFAULT 0,
     role_gate       INTEGER DEFAULT 0,
     location_gate   INTEGER DEFAULT 0,
@@ -264,7 +265,37 @@ CREATE TABLE IF NOT EXISTS discovery_runs (
     response_ms     INTEGER,
     error           TEXT,
     started_at      TEXT,
-    finished_at     TEXT
+finished_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS crawl_jobs (
+    id              INTEGER PRIMARY KEY,
+    run_id          TEXT,
+    source_id       INTEGER,
+    source_name     TEXT,
+    url             TEXT,
+    crawler         TEXT,
+    priority        TEXT,
+    status          TEXT DEFAULT 'QUEUED',
+    retry_count     INTEGER DEFAULT 0,
+    items_found     INTEGER DEFAULT 0,
+    items_created   INTEGER DEFAULT 0,
+    items_updated   INTEGER DEFAULT 0,
+    duplicates_found INTEGER DEFAULT 0,
+    error           TEXT,
+    started_at      TEXT,
+    completed_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id              INTEGER PRIMARY KEY,
+    opportunity_id  INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    reporter_id     INTEGER,
+    reason          TEXT,
+    notes           TEXT,
+    status          TEXT DEFAULT 'pending',
+    created_at      TEXT,
+    resolved_at     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS source_health (

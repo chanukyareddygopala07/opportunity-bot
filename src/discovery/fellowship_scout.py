@@ -13,7 +13,7 @@ import uuid
 
 from src import db, dedupe, schema
 from src import sources as registry
-from src.discovery import entries, fetcher
+from src.discovery import entries, fetcher, router
 from src.scoring import score_for_opportunity
 from src.verification import verify_opportunity
 
@@ -76,6 +76,7 @@ def scout_source(source):
     started = db.now_iso()
     stats = dict(run_id=run_id, scout="fellowship_scout", source_id=source.get("id"),
                  source_name=name, source_url=source.get("url"), method=source.get("method"),
+                 crawler=router.select_crawler(source),
                  raw_items=0, role_gate=0, location_gate=0, pattern_gate=0,
                  extracted=0, stored_new=0, duplicates=0, eligible=0,
                  likely_eligible=0, unclear=0, not_eligible=0, published=0,

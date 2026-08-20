@@ -83,6 +83,9 @@ def _migrate(conn):
     ):
         if column not in opp_columns:
             conn.execute(f"ALTER TABLE opportunities ADD COLUMN {column} {ddl}")
+    run_columns = {row["name"] for row in conn.execute("PRAGMA table_info(discovery_runs)")}
+    if "crawler" not in run_columns:
+        conn.execute("ALTER TABLE discovery_runs ADD COLUMN crawler TEXT")
     user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
     for column, ddl in (
         ("citizenship", "TEXT"),
@@ -149,7 +152,7 @@ def _migrate(conn):
         ("discovery_runs", (
             "CREATE TABLE IF NOT EXISTS discovery_runs ("
             "id INTEGER PRIMARY KEY, run_id TEXT, scout TEXT, source_id INTEGER, "
-            "source_name TEXT, source_url TEXT, method TEXT, "
+            "source_name TEXT, source_url TEXT, method TEXT, crawler TEXT, "
             "raw_items INTEGER DEFAULT 0, role_gate INTEGER DEFAULT 0, "
             "location_gate INTEGER DEFAULT 0, pattern_gate INTEGER DEFAULT 0, "
             "extracted INTEGER DEFAULT 0, stored_new INTEGER DEFAULT 0, "
@@ -159,6 +162,22 @@ def _migrate(conn):
             "extraction_errors INTEGER DEFAULT 0, retries INTEGER DEFAULT 0, "
             "http_status INTEGER, response_ms INTEGER, error TEXT, "
             "started_at TEXT, finished_at TEXT)"
+        )),
+        ("crawl_jobs", (
+            "CREATE TABLE IF NOT EXISTS crawl_jobs ("
+            "id INTEGER PRIMARY KEY, run_id TEXT, source_id INTEGER, "
+            "source_name TEXT, url TEXT, crawler TEXT, priority TEXT, "
+            "status TEXT DEFAULT 'QUEUED', retry_count INTEGER DEFAULT 0, "
+            "items_found INTEGER DEFAULT 0, items_created INTEGER DEFAULT 0, "
+            "items_updated INTEGER DEFAULT 0, duplicates_found INTEGER DEFAULT 0, "
+            "error TEXT, started_at TEXT, completed_at TEXT)"
+        )),
+        ("reports", (
+            "CREATE TABLE IF NOT EXISTS reports ("
+            "id INTEGER PRIMARY KEY, opportunity_id INTEGER NOT NULL "
+            "REFERENCES opportunities(id) ON DELETE CASCADE, reporter_id INTEGER, "
+            "reason TEXT, notes TEXT, status TEXT DEFAULT 'pending', "
+            "created_at TEXT, resolved_at TEXT)"
         )),
         ("source_health", (
             "CREATE TABLE IF NOT EXISTS source_health ("
@@ -1013,6 +1032,7 @@ def insert_search_query(query, engine, result_count):
 
 DISCOVERY_RUN_COLUMNS = (
     "run_id", "scout", "source_id", "source_name", "source_url", "method",
+    "crawler",
     "raw_items", "role_gate", "location_gate", "pattern_gate", "extracted",
     "stored_new", "duplicates", "eligible", "likely_eligible", "unclear",
     "not_eligible", "published", "extraction_errors", "retries",
@@ -1146,6 +1166,147 @@ def list_recent_discovery_runs(limit=100):
             "SELECT * FROM discovery_runs ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def deadline_days_active():
+    """Days-left for every stored deadline that parses (for queue priority)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT deadline FROM opportunities").fetchall()
+    finally:
+        conn.close()
+    return [_deadlines.days_left(r["deadline"]) for r in rows if r["deadline"]]
+
+
+# --- crawl job queue ---
+
+def enqueue_crawl_job(run_id, source_id, source_name, url, crawler, priority="medium"):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO crawl_jobs "
+            "(run_id, source_id, source_name, url, crawler, priority, status, started_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'QUEUED', ?)",
+            (run_id, source_id, source_name, url, crawler, priority, now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def next_crawl_jobs(limit=10):
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM crawl_jobs WHERE status = 'QUEUED' "
+            "ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, id "
+            "LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def complete_crawl_job(job_id, items_found=0, items_created=0, items_updated=0,
+                       duplicates_found=0, status="COMPLETED"):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE crawl_jobs SET status = ?, items_found = ?, items_created = ?, "
+            "items_updated = ?, duplicates_found = ?, completed_at = ? WHERE id = ?",
+            (status, items_found, items_created, items_updated, duplicates_found,
+             now_iso(), job_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fail_crawl_job(job_id, error, retry=True):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT retry_count FROM crawl_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        retries = (row["retry_count"] if row else 0) + 1
+        status = "RETRYING" if retry and retries < 3 else "FAILED"
+        conn.execute(
+            "UPDATE crawl_jobs SET status = ?, retry_count = ?, error = ?, "
+            "completed_at = ? WHERE id = ?",
+            (status, retries, str(error)[:500], now_iso(), job_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_crawl_jobs(limit=50, status=None):
+    conn = get_connection()
+    try:
+        sql = "SELECT * FROM crawl_jobs"
+        params = []
+        if status:
+            sql += " WHERE status = ?"
+            params.append(status)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def crawl_queue_stats():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) n FROM crawl_jobs GROUP BY status"
+        ).fetchall()
+        return {r["status"]: r["n"] for r in rows}
+    finally:
+        conn.close()
+
+
+# --- reports (incorrect information) ---
+
+def add_report(opportunity_id, reporter_id, reason, notes=None):
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO reports (opportunity_id, reporter_id, reason, notes, status, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', ?)",
+            (opportunity_id, reporter_id, reason, notes, now_iso()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_reports(status="pending"):
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT r.*, o.title, o.organization FROM reports r "
+            "LEFT JOIN opportunities o ON o.id = r.opportunity_id "
+            "WHERE r.status = ? ORDER BY r.id DESC", (status,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def resolve_report(report_id, resolution="accepted"):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE reports SET status = ?, resolved_at = ? WHERE id = ?",
+            (resolution, now_iso(), report_id),
+        )
+        conn.commit()
     finally:
         conn.close()
 

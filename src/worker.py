@@ -43,14 +43,16 @@ def discovery_summary(limit=200):
 
 def run_pipeline():
     db.init_db()
-    from src import ai, maintenance
+    from src import ai, maintenance, queue as crawl_queue
     from src.discovery import fellowship_scout, internship_scout
     from src.notifications import notifier
 
     run_id = str(uuid.uuid4())[:8]
     started = db.now_iso()
+    queued = crawl_queue.enqueue_from_sources(run_id)
     fellowship_new = fellowship_scout.run(category="fellowship")
     internship_new = internship_scout.run(category="internship")
+    settled = crawl_queue.settle(run_id)
     notified = notifier.run()
     ai_assessed = ai.assess_new()
     maintenance_result = maintenance.run_maintenance()
@@ -59,6 +61,7 @@ def run_pipeline():
         "internship_scout": internship_new,
         "notifications": notified,
         "ai_assessments": ai_assessed,
+        "crawl_queue": {"queued": queued, "settled": settled},
         "maintenance": maintenance_result,
         "discovery": discovery_summary(),
     }

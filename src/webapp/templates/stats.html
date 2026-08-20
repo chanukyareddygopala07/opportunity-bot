@@ -37,7 +37,7 @@
   <h2 class="section-title">Arjun &amp; Vidya — recent scouting runs</h2>
   <p class="muted small">Both bots run every 2 hours. Each row is one source checked by one bot.</p>
   <table class="facts">
-    <thead><tr><th>Bot</th><th>Source</th><th>Raw</th><th>New</th><th>Dups</th><th>Eligible</th><th>Unclear</th><th>Rejected</th><th>Error</th></tr></thead>
+    <thead><tr><th>Bot</th><th>Source</th><th>Crawler</th><th>Raw</th><th>New</th><th>Dups</th><th>Eligible</th><th>Unclear</th><th>Rejected</th><th>Error</th></tr></thead>
     <tbody>
       {% for run in runs %}
         <tr>
@@ -47,6 +47,7 @@
             {% else %}—{% endif %}
           </td>
           <td class="small">{{ run.source_name }}</td>
+          <td class="small muted" title="crawler">{{ run.crawler or '' }}</td>
           <td>{{ run.raw_items or 0 }}</td>
           <td>{{ run.stored_new or 0 }}</td>
           <td>{{ run.duplicates or 0 }}</td>
@@ -55,6 +56,29 @@
           <td>{{ run.not_eligible or 0 }}</td>
           <td class="small muted">{{ run.error or '' }}</td>
         </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2 class="section-title">Crawl queue — latest jobs</h2>
+  <p class="muted small">Each pipeline run plans one job per enabled source; the router picks the crawler. Counts are copied back from the real run.</p>
+  <table class="facts">
+    <thead><tr><th>Source</th><th>Crawler</th><th>Priority</th><th>Status</th><th>Retries</th><th>Found</th><th>New</th><th>Dups</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for job in jobs %}
+        <tr>
+          <td class="small">{{ job.source_name }}</td>
+          <td class="small muted">{{ job.crawler or '' }}</td>
+          <td>{{ job.priority or '' }}</td>
+          <td>{{ job.status or '' }}</td>
+          <td>{{ job.retry_count or 0 }}</td>
+          <td>{{ job.items_found or 0 }}</td>
+          <td>{{ job.items_created or 0 }}</td>
+          <td>{{ job.duplicates_found or 0 }}</td>
+          <td class="small muted">{{ job.error or '' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="muted small">No crawl jobs yet — the next pipeline run will create them.</td></tr>
       {% endfor %}
     </tbody>
   </table>
