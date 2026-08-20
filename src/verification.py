@@ -1,4 +1,4 @@
-"""Phase 11 — verification & trust.
+"""Phase 11 — verification & trust (v2: official-source priority + scheduling).
 
 A discovered opportunity only becomes "verified" when its application link
 is live AND it comes from an official source (trust >= 90) or is
@@ -6,11 +6,18 @@ corroborated by multiple independent sources. Dead links and non-official
 items stay unverified with a recorded reason. Nothing is ever marked
 verified without a live check.
 
+v2 changes:
+- official_url is checked BEFORE the application URL (official > aggregator)
+- every verified item gets a next_verification deadline, tighter when the
+  application deadline is near (<=7d: 12h, <=30d: 24h, else weekly)
+- verify_due() powers the pipeline so the queue drains every run
+
 Run manually:   python -m src.verification
 """
 import sys
+from datetime import datetime, timedelta, timezone
 
-from src import db
+from src import db, deadlines
 from src.discovery import fetcher
 
 CHECK_TIMEOUT = 10
@@ -42,26 +49,55 @@ def _source_count(opportunity_id):
         conn.close()
 
 
+def _check_url(opp):
+    """Official source first, then the application destination, then the source."""
+    return (
+        opp.get("official_url")
+        or opp.get("application_url")
+        or opp.get("source_url")
+    )
+
+
+def schedule_next_verification(opp, status, now=None):
+    """Tighter verification cadence as deadlines approach; weekly otherwise."""
+    now = now or datetime.now(timezone.utc)
+    days = deadlines.days_left(opp.get("deadline"))
+    if days is not None and days <= 7:
+        hours = 12
+    elif days is not None and days <= 30:
+        hours = 24
+    elif status == "verified":
+        hours = 7 * 24
+    else:
+        hours = 24
+    next_at = (now + timedelta(hours=hours)).isoformat()
+    db.update_opportunity(opp["id"], next_verification=next_at)
+    return next_at
+
+
 def verify_opportunity(opportunity_id):
     """Verifies one opportunity. Returns (status, message) or None."""
     opp = db.get_opportunity(opportunity_id)
     if not opp:
         return None
-    url = opp.get("application_url") or opp.get("official_url") or opp.get("source_url")
+    url = _check_url(opp)
     if not url:
         db.record_verification(opportunity_id, "unverified", None, "no application url")
         db.update_opportunity(opportunity_id, verification_status="unverified")
+        schedule_next_verification(opp, "unverified")
         return "unverified", "no application url"
 
     link_status, link_message = check_link(url)
     if link_status == "error":
         db.record_verification(opportunity_id, opp.get("verification_status") or "pending",
                                "error", link_message)
+        schedule_next_verification(opp, opp.get("verification_status") or "pending")
         return opp.get("verification_status") or "pending", "link check failed"
 
     if link_status == "dead":
         db.record_verification(opportunity_id, "unverified", "dead", link_message)
         db.update_opportunity(opportunity_id, verification_status="unverified")
+        schedule_next_verification(opp, "unverified")
         return "unverified", f"link dead ({link_message})"
 
     trust = opp.get("organization_trust_score") or 0
@@ -73,10 +109,12 @@ def verify_opportunity(opportunity_id):
             message += f"; corroborated by {_source_count(opportunity_id)} sources"
         db.record_verification(opportunity_id, "verified", "live", message)
         db.update_opportunity(opportunity_id, verification_status="verified")
+        schedule_next_verification(opp, "verified")
         return "verified", message
     db.record_verification(opportunity_id, "unverified", "live",
                            "link live but source not official")
     db.update_opportunity(opportunity_id, verification_status="unverified")
+    schedule_next_verification(opp, "unverified")
     return "unverified", "link live but source not official"
 
 
@@ -93,6 +131,15 @@ def verify_all(limit=None, only_pending=False):
         done += 1
         if limit and done >= limit:
             break
+    return counts
+
+
+def verify_due(limit=20):
+    """Verifies items that are due (deadline-first), then schedules the next check."""
+    counts = {}
+    for opp in db.get_due_verifications(limit=limit):
+        status, _message = verify_opportunity(opp["id"])
+        counts[status] = counts.get(status, 0) + 1
     return counts
 
 

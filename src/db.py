@@ -80,6 +80,7 @@ def _migrate(conn):
     for column, ddl in (
         ("deadline_status", "TEXT"),
         ("trust_score", "INTEGER"),
+        ("next_verification", "TEXT"),
     ):
         if column not in opp_columns:
             conn.execute(f"ALTER TABLE opportunities ADD COLUMN {column} {ddl}")
@@ -427,6 +428,7 @@ def update_opportunity(opportunity_id, **fields):
     allowed = {
         "eligibility_status", "match_score", "verification_status",
         "status", "saved", "last_seen", "deadline_status", "trust_score",
+        "next_verification", "organization_trust_score",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
@@ -1178,6 +1180,27 @@ def deadline_days_active():
     finally:
         conn.close()
     return [_deadlines.days_left(r["deadline"]) for r in rows if r["deadline"]]
+
+
+def get_due_verifications(limit=20):
+    """Items whose next_verification has passed (or was never set), deadline-first."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT * FROM opportunities").fetchall()
+    finally:
+        conn.close()
+    now = now_iso()
+    due = []
+    for r in rows:
+        opp = row_to_opportunity(r)
+        nv = opp.get("next_verification")
+        if nv is None or nv <= now:
+            due.append(opp)
+    due.sort(key=lambda o: (
+        _deadlines.days_left(o.get("deadline")) is None,
+        _deadlines.days_left(o.get("deadline")) or 9999,
+    ))
+    return due[:limit]
 
 
 # --- crawl job queue ---

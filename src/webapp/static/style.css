@@ -680,6 +680,11 @@ input:focus, select:focus { outline: 2px solid var(--neon); outline-offset: 1px;
 }
 @keyframes aawara-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
+.report-form { margin-top: 6px; }
+.report-form summary { cursor: pointer; }
+.report-form form { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; max-width: 480px; }
+.report-form .form-grid { grid-template-columns: 1fr 1fr; }
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1080px) {

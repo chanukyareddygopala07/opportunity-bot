@@ -51,6 +51,28 @@
         <a class="btn btn-primary" target="_blank" rel="noopener"
            href="{{ opp.application_url or opp.official_url or opp.source_url }}">Apply ↗</a>
       {% endif %}
+      <details class="report-form">
+        <summary class="small muted">Report incorrect information</summary>
+        <form method="post" action="{{ url_for('report_opportunity', opportunity_id=opp.id) }}">
+          <div class="form-grid">
+            <label>Reason
+              <select name="reason" required>
+                <option value="">Choose…</option>
+                <option>Deadline is wrong</option>
+                <option>No longer accepting applications</option>
+                <option>Eligibility info is wrong</option>
+                <option>Link is broken</option>
+                <option>Duplicate listing</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="wide">Notes
+              <input type="text" name="notes" placeholder="Optional — what's incorrect?">
+            </label>
+          </div>
+          <button class="btn btn-small" type="submit">Submit report</button>
+        </form>
+      </details>
     </div>
 
     {% if status %}

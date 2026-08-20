@@ -241,6 +241,22 @@ def register_routes(app):
             trust_label=trust.trust_label(opp.get("trust_score")),
         )
 
+    @app.route("/o/<int:opportunity_id>/report", methods=["POST"])
+    def report_opportunity(opportunity_id):
+        if not db.get_opportunity(opportunity_id):
+            abort(404)
+        reason = (request.form.get("reason") or "").strip()
+        if not reason:
+            abort(400)
+        notes = (request.form.get("notes") or "").strip() or None
+        db.add_report(
+            opportunity_id,
+            g.user["id"] if g.user else None,
+            reason,
+            notes,
+        )
+        return redirect(request.referrer or url_for("detail", opportunity_id=opportunity_id))
+
     @app.route("/o/<int:opportunity_id>/save", methods=["POST"])
     @_login_required
     def save(opportunity_id):

@@ -43,7 +43,7 @@ def discovery_summary(limit=200):
 
 def run_pipeline():
     db.init_db()
-    from src import ai, maintenance, queue as crawl_queue
+    from src import ai, maintenance, queue as crawl_queue, verification
     from src.discovery import fellowship_scout, internship_scout
     from src.notifications import notifier
 
@@ -53,6 +53,7 @@ def run_pipeline():
     fellowship_new = fellowship_scout.run(category="fellowship")
     internship_new = internship_scout.run(category="internship")
     settled = crawl_queue.settle(run_id)
+    verified = verification.verify_due(limit=20)
     notified = notifier.run()
     ai_assessed = ai.assess_new()
     maintenance_result = maintenance.run_maintenance()
@@ -61,6 +62,7 @@ def run_pipeline():
         "internship_scout": internship_new,
         "notifications": notified,
         "ai_assessments": ai_assessed,
+        "verification": verified,
         "crawl_queue": {"queued": queued, "settled": settled},
         "maintenance": maintenance_result,
         "discovery": discovery_summary(),
