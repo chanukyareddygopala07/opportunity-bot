@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ opp.title }} — Aawara{% endblock %}
+{% block content %}
+  <a class="btn btn-small" href="{{ request.referrer or url_for('opportunities_list') }}">‹ Back</a>
+
+  <article class="card detail">
+    <div class="card-top">
+      <span class="priority">{{ score | priority }}</span>
+      <h1 class="card-title">{{ opp.title }}</h1>
+      {% if score is not none %}<span class="score">{{ score }}%</span>{% endif %}
+    </div>
+    <p class="muted">
+      {{ opp.organization or 'Unknown org' }}
+      {% if opp.location %} · {{ opp.location }}{% if opp.remote %} (remote){% endif %}{% endif %}
+    </p>
+
+    <div class="detail-actions">
+      {% if g.user %}
+        <a class="btn" href="{{ url_for('resume_tailor', opportunity_id=opp.id) }}">✂ Tailor resume</a>
+        {% if application %}
+          <span class="app-status app-{{ application.status }}">{{ application.status }} · {{ (application.applied_at or '')[:10] }}</span>
+          <form method="post" action="{{ url_for('update_application_status', opportunity_id=opp.id) }}" class="inline">
+            <select name="status" class="small">
+              {% for s in ('applied', 'interview', 'offer', 'rejected', 'withdrawn') %}
+                <option value="{{ s }}" {{ 'selected' if application.status == s }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-small" type="submit">Update</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_application', opportunity_id=opp.id) }}" class="inline">
+            <button class="btn btn-small" type="submit">Remove</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('mark_applied', opportunity_id=opp.id) }}" class="inline">
+            <button class="btn" type="submit">✓ Mark applied</button>
+          </form>
+        {% endif %}
+        {% if bookmarked %}
+          <form method="post" action="{{ url_for('unsave', opportunity_id=opp.id) }}" class="inline">
+            <button class="btn" type="submit">Unsave</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('save', opportunity_id=opp.id) }}" class="inline">
+            <button class="btn btn-primary" type="submit">Save</button>
+          </form>
+        {% endif %}
+      {% else %}
+        <a class="btn" href="{{ url_for('login', next=request.path) }}">Sign in to save</a>
+      {% endif %}
+      {% if opp.application_url or opp.official_url or opp.source_url %}
+        <a class="btn btn-primary" target="_blank" rel="noopener"
+           href="{{ opp.application_url or opp.official_url or opp.source_url }}">Apply ↗</a>
+      {% endif %}
+    </div>
+
+    {% if status %}
+      <div class="eligibility">
+        <span class="tag {{ 'tag-ok' if status == 'eligible' else 'tag-mid' if status in ('likely_eligible','unclear') else 'tag-no' }}">
+          {{ status | replace('_', ' ') }}
+        </span>
+        <span class="muted">{{ status | elig_label }}</span>
+      </div>
+    {% endif %}
+
+    {% if breakdown %}
+      <div class="score-breakdown">
+        Eligibility <b>{{ breakdown.eligibility_pct }}%</b>
+        · Career fit <b>{{ breakdown.career_fit if breakdown.career_fit is not none else '—' }}%</b>
+        → Overall <b>{{ breakdown.overall if breakdown.overall is not none else '—' }}%</b>
+      </div>
+    {% endif %}
+
+    {% if reasons %}
+      <ul class="reasons">
+        {% for reason in reasons %}<li>{{ reason }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    {% if missing %}
+      <p class="muted small">Needs confirmation: {{ missing | join(', ') }}.</p>
+    {% endif %}
+
+    {% if opp.description %}
+      <h3>About</h3>
+      <div class="description">{{ opp.description | e | lines | safe }}</div>
+    {% endif %}
+
+    <h3>Facts</h3>
+    <table class="facts">
+      <tbody>
+        {% if opp.deadline %}
+          <tr><th>Deadline</th><td>{{ opp.deadline }}
+            {%- set d = opp.deadline | days_left %}
+            {%- if d is not none and d >= 0 %} <span class="tag {{ 'tag-no' if d <= 7 else 'tag-mid' }}">{{ d }}d left</span>{% endif -%}
+            {%- if d is not none and d < 0 %} <span class="tag tag-muted">expired</span>{% endif -%}
+          </td></tr>
+        {% endif %}
+        {% if opp.listed_at %}<tr><th>Listed</th><td>{{ opp.listed_at | list_date }}</td></tr>{% endif %}
+        {% if opp.start_date or opp.end_date %}<tr><th>Dates</th><td>{{ opp.start_date or '?' }} → {{ opp.end_date or '?' }}</td></tr>{% endif %}
+        {% if opp.duration %}<tr><th>Duration</th><td>{{ opp.duration }}</td></tr>{% endif %}
+        {% if opp.stipend %}<tr><th>Stipend</th><td>{{ opp.stipend }}{% if opp.currency %} {{ opp.currency }}{% endif %}</td></tr>{% endif %}
+        {% if opp.funding %}<tr><th>Funding</th><td>{{ opp.funding }}</td></tr>{% endif %}
+        {% if opp.travel_support %}<tr><th>Travel support</th><td>{{ opp.travel_support }}</td></tr>{% endif %}
+        {% if opp.housing_support %}<tr><th>Housing support</th><td>{{ opp.housing_support }}</td></tr>{% endif %}
+        {% if opp.eligible_countries %}<tr><th>Eligible countries</th><td>{{ opp.eligible_countries | join(', ') }}</td></tr>{% endif %}
+        {% if opp.eligible_degrees %}<tr><th>Eligible degrees</th><td>{{ opp.eligible_degrees | join(', ') }}</td></tr>{% endif %}
+        {% if opp.eligible_years %}<tr><th>Eligible years</th><td>{{ opp.eligible_years | join(', ') }}</td></tr>{% endif %}
+        {% if opp.eligible_branches %}<tr><th>Eligible branches</th><td>{{ opp.eligible_branches | join(', ') }}</td></tr>{% endif %}
+        {% if opp.minimum_gpa %}<tr><th>Minimum GPA</th><td>{{ opp.minimum_gpa }}</td></tr>{% endif %}
+        {% if opp.verification_status %}<tr><th>Verification</th><td>{{ opp.verification_status }}</td></tr>{% endif %}
+      </tbody>
+    </table>
+
+    {% if opp.requirements %}
+      <h3>Requirements</h3>
+      <ul class="reasons">{% for req in opp.requirements %}<li>{{ req }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if opp.preferred_skills %}
+      <h3>Preferred skills</h3>
+      <div class="chips">{% for skill in opp.preferred_skills %}<span>{{ skill }}</span>{% endfor %}</div>
+    {% endif %}
+
+    {% if ai %}
+      <h3>AI cross-check</h3>
+      <div class="card ai-card">
+        {% if ai.verdict %}
+          <span class="tag {{ 'tag-ok' if ai.verdict == 'eligible' else 'tag-mid' if ai.verdict in ('likely_eligible','unclear') else 'tag-no' }}">{{ ai.verdict | replace('_', ' ') }}</span>
+        {% endif %}
+        {% if ai.reason %}<p class="small">{{ ai.reason }}</p>{% endif %}
+        {% if ai.deadline_guess %}<p class="small muted">Deadline guess: {{ ai.deadline_guess }} (advisory only — verify on the listing)</p>{% endif %}
+        {% if ai.confidence %}<p class="small muted">Confidence: {{ '%.0f' | format(ai.confidence * 100) }}% · {{ ai.model or 'ollama' }}</p>{% endif %}
+      </div>
+    {% endif %}
+
+    <p class="small muted">
+      Seen first {{ opp.first_seen | short_date }} · last {{ opp.last_seen | short_date }}
+      {% if opp.source_url %} · source: <a target="_blank" rel="noopener" href="{{ opp.source_url }}">{{ opp.source_url }}</a>{% endif %}
+    </p>
+  </article>
+{% endblock %}

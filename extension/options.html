@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aawara Autofill — Options</title>
+  <style>
+    body { font: 14px/1.6 system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #10131a; }
+    h1 { font-size: 18px; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
+    input { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    button { margin-top: 18px; padding: 9px 18px; border: 0; border-radius: 6px; background: #5b8cff; color: #fff; font-weight: 600; cursor: pointer; }
+    #msg { margin-top: 10px; font-weight: 600; }
+    .ok { color: #16a34a; }
+    .err { color: #dc2626; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; }
+    .muted { color: #6b7280; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>🎯 Aawara Autofill — Options</h1>
+  <p class="muted">Connect the extension to <em>your own</em> Aawara server.
+    Generate the API token on the <b>Autofill</b> page of your Aawara instance.
+    No third party ever sees these values.</p>
+
+  <label for="server">Aawara server URL</label>
+  <input id="server" placeholder="http://localhost:8080" spellcheck="false">
+
+  <label for="token">API token</label>
+  <input id="token" type="password" placeholder="paste your token" spellcheck="false">
+
+  <button id="save">Save</button>
+  <div id="msg"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

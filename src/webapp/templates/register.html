@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Register — Aawara{% endblock %}
+{% block content %}
+  <div class="auth-card">
+    <h2 class="section-title">Create an account</h2>
+    <p class="muted small">Your profile starts from the default Indian
+      student profile; you can adjust it on the Profile page. Personalized
+      match scores activate immediately.</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <div class="oauth-row">
+      <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='google') }}">Continue with Google</a>
+      <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='github') }}">Continue with GitHub</a>
+    </div>
+    <div class="divider"><span>or with email &amp; password</span></div>
+    <form method="post" class="form">
+      <label>Username
+        <input name="username" required autofocus minlength="3">
+      </label>
+      <label>Password
+        <input name="password" type="password" required minlength="8">
+      </label>
+      <label>Confirm password
+        <input name="confirm" type="password" required minlength="8">
+      </label>
+      <button class="btn btn-primary" type="submit">Register</button>
+    </form>
+    <p class="muted small">Already registered? <a href="{{ url_for('login') }}">Login</a>.</p>
+  </div>
+{% endblock %}

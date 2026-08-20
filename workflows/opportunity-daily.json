@@ -1,0 +1,72 @@
+{
+  "id": "9c4f7e1a-8b2d-4c5e-9a3f-0d1e2f3a4b5c",
+  "name": "Opportunity Bot \u2014 daily pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "2f9c480e-b02b-4a69-8b62-ba2e0f864d8f",
+      "name": "Every day 08:00 & 18:00 IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "opportunity-schedule"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://telegram-bot:8080/run",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Run-Token",
+              "value": "={{$env.RUN_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ea50a72b-1899-467b-a08e-fb0dc5191950",
+      "name": "Run pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Every day 08:00 & 18:00 IST": {
+      "main": [
+        [
+          {
+            "node": "Run pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "pinData": {},
+  "active": true,
+  "meta": {
+    "instanceId": "opportunity-bot",
+    "templateCredsSetupCompleted": false
+  }
+}

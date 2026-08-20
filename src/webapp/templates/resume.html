@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Resume — Aawara{% endblock %}
+{% block content %}
+  <h2 class="section-title">Your Aawara resume</h2>
+  <p class="muted">Built only from facts you entered in your
+    <a href="{{ url_for('profile') }}">profile</a> and the sections below.
+    Aawara never invents skills, projects, grades or dates. Name, degree,
+    CGPA, skills and interests are pulled from your profile automatically.</p>
+
+  <div class="resume-layout">
+    <section>
+      <h3 class="section-title">Builder</h3>
+      <form method="post" class="form">
+        <h4 class="subsection">Contact</h4>
+        <div class="form-grid">
+          <label>Email
+            <input name="email" value="{{ contact.email or '' }}" placeholder="you@example.com">
+          </label>
+          <label>Phone
+            <input name="phone" value="{{ contact.phone or '' }}" placeholder="+91 …">
+          </label>
+          <label>LinkedIn
+            <input name="linkedin" value="{{ contact.linkedin or '' }}" placeholder="linkedin.com/in/…">
+          </label>
+          <label>GitHub
+            <input name="github" value="{{ contact.github or '' }}" placeholder="github.com/…">
+          </label>
+          <label>Website / portfolio
+            <input name="website" value="{{ contact.website or '' }}" placeholder="https://…">
+          </label>
+        </div>
+
+        <h4 class="subsection">Education</h4>
+        <p class="muted small">JSON list: <code>[{"title":"B.Tech — CSE — IIT Bombay — 2027 · CGPA 8.2"}]</code>. Leave empty to auto-build from your profile.</p>
+        <textarea name="education" rows="4" class="wide">{{ extra.education | tojson(indent=1) if extra.education else '' }}</textarea>
+
+        <h4 class="subsection">Experience</h4>
+        <p class="muted small">JSON list: <code>[{"role":"SWE Intern","company":"Acme","start":"May 2026","end":"Jul 2026","description":"Built X; cut latency 40%"}]</code></p>
+        <textarea name="experience" rows="6" class="wide">{{ extra.experience | tojson(indent=1) if extra.experience else '' }}</textarea>
+
+        <h4 class="subsection">Projects</h4>
+        <p class="muted small">JSON list: <code>[{"title":"Port scanner","year":"2025","description":"…"}]</code></p>
+        <textarea name="projects" rows="6" class="wide">{{ extra.projects | tojson(indent=1) if extra.projects else '' }}</textarea>
+
+        <h4 class="subsection">Awards</h4>
+        <p class="muted small">JSON list: <code>[{"title":"KVPY Scholar","year":"2023"}]</code> or plain strings: <code>["KVPY Scholar"]</code></p>
+        <textarea name="awards" rows="3" class="wide">{{ extra.awards | tojson(indent=1) if extra.awards else '' }}</textarea>
+
+        <button class="btn btn-primary" type="submit">Save resume</button>
+      </form>
+    </section>
+
+    <section>
+      <h3 class="section-title">Live preview</h3>
+      <div class="actions">
+        <a class="btn" href="{{ url_for('resume_download', fmt='txt') }}">⬇ Download .txt</a>
+        <a class="btn" href="{{ url_for('resume_download', fmt='pdf') }}">⬇ Download .pdf</a>
+      </div>
+      <pre class="resume-preview">{{ text }}</pre>
+    </section>
+  </div>
+{% endblock %}

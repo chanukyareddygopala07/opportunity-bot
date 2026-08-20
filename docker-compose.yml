@@ -1,0 +1,75 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: opportunity-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - N8N_SECURE_COOKIE=false
+      - N8N_USER_MANAGEMENT_DISABLED=true
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Asia/Kolkata}
+      - TZ=${TZ:-Asia/Kolkata}
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - RUN_TOKEN=${RUN_TOKEN:-}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  web:
+    build:
+      context: ./scripts/telegram-bot
+    container_name: opportunity-web
+    restart: unless-stopped
+    command: ["python", "-m", "src.webapp"]
+    ports:
+      - "127.0.0.1:${WEBHOOK_PORT:-8080}:8080"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - SEND_TELEGRAM=false
+      - DATABASE_PATH=${DATABASE_PATH:-/app/data/opportunity.db}
+      - RUN_TOKEN=${RUN_TOKEN:-}
+      - SESSION_SECRET=${SESSION_SECRET:-change-me}
+      - OAUTH_REDIRECT_BASE=${OAUTH_REDIRECT_BASE:-http://localhost:8080}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.6-flash}
+      - DEBUG_DISCOVERY=${DEBUG_DISCOVERY:-false}
+      - SAVE_REJECTED=${SAVE_REJECTED:-false}
+      - SAVE_RAW_RESPONSES=${SAVE_RAW_RESPONSES:-false}
+      - MAX_PAGES_PER_SOURCE=${MAX_PAGES_PER_SOURCE:-10}
+      - MAX_RESULTS_PER_SOURCE=${MAX_RESULTS_PER_SOURCE:-1000}
+      - PER_DOMAIN_DELAY_MS=${PER_DOMAIN_DELAY_MS:-1500}
+      - REQUEST_TIMEOUT_MS=${REQUEST_TIMEOUT_MS:-20000}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - TZ=${TZ:-Asia/Kolkata}
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./database:/app/database
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+    depends_on:
+      - n8n
+
+volumes:
+  n8n_data:

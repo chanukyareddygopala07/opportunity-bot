@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Rudra — your AI career guide — Aawara{% endblock %}
+{% block content %}
+  <section class="hero">
+    <h1>🧭 Rudra</h1>
+    <p>
+      Your AI career guide. Ask about interview prep, career direction, resume
+      tailoring, or which internships/fellowships fit your profile. Rudra is
+      <strong>advisory-only</strong>: it never invents facts and tells you when
+      to verify on official sites.
+    </p>
+  </section>
+
+  <div class="card">
+    <div class="chat" id="chat">
+      {% if not history %}
+        <div class="chat-msg chat-bot">
+          Namaste! I'm Rudra. 🎯 Tell me about yourself — your branch, year,
+          CGPA and goals — and ask me anything about interviews, resumes, or
+          finding research programs and internships where you're eligible.
+        </div>
+      {% else %}
+        {% for msg in history %}
+          <div class="chat-msg {{ 'chat-user' if msg.role == 'user' else 'chat-bot' }}">
+            {{ msg.content }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <form class="chat-form" id="chat-form">
+      <input type="text" id="chat-input" maxlength="4000" required
+             placeholder="Ask Rudra about interviews, careers, resumes…" autofocus>
+      <button class="btn btn-primary" id="chat-send" type="submit">Send</button>
+    </form>
+    <form method="post" action="{{ url_for('rudra_clear') }}" class="inline">
+      <button class="btn btn-small" type="submit" style="margin-top: 10px;">Clear chat</button>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      const chat = document.getElementById('chat');
+      const form = document.getElementById('chat-form');
+      const input = document.getElementById('chat-input');
+      const sendBtn = document.getElementById('chat-send');
+
+      function addMsg(text, isUser) {
+        const div = document.createElement('div');
+        div.className = 'chat-msg ' + (isUser ? 'chat-user' : 'chat-bot');
+        div.textContent = text;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+        return div;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = input.value.trim();
+        if (!message || sendBtn.disabled) return;
+        input.value = '';
+        addMsg(message, true);
+        sendBtn.disabled = true;
+        sendBtn.textContent = '…';
+        const bubble = addMsg('', false);
+        bubble.classList.add('typing');
+
+        try {
+          const resp = await fetch('{{ url_for("rudra_stream") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ message: message }),
+            credentials: 'same-origin',
+          });
+          if (!resp.ok || !resp.body) {
+            bubble.textContent = 'Rudra is unreachable right now — try again in a moment.';
+            return;
+          }
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let full = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            for (const line of text.split('\n')) {
+              const m = line.match(/^data: (.*)$/);
+              if (!m) continue;
+              const data = m[1];
+              if (data.startsWith('__DONE__:')) {
+                const final = data.slice('__DONE__:'.length);
+                if (final !== full) bubble.textContent = final;
+                break;
+              }
+              full += data;
+              bubble.textContent = full;
+              bubble.classList.remove('typing');
+              chat.scrollTop = chat.scrollHeight;
+            }
+          }
+          if (!full) bubble.textContent = 'Rudra is unreachable right now — try again in a moment.';
+        } catch (err) {
+          bubble.textContent = 'Rudra is unreachable right now — try again in a moment.';
+        } finally {
+          bubble.classList.remove('typing');
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Send';
+          input.focus();
+        }
+      });
+    })();
+  </script>
+{% endblock %}

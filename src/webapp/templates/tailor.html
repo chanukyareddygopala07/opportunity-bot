@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Tailored resume — Aawara{% endblock %}
+{% block content %}
+  <h2 class="section-title">Resume tailored for: {{ opp.title }}</h2>
+  <p class="muted">{{ opp.organization }}{% if opp.location %} · {{ opp.location }}{% endif %}</p>
+
+  <h3 class="section-title">What Rudra changed</h3>
+  <ul class="notes-list">
+    {% for note in notes %}
+      <li>{{ note }}</li>
+    {% endfor %}
+  </ul>
+  <p class="muted small">Fact-locked: only reordered/reframed facts you already
+    provided — nothing was invented. Review the preview before applying.</p>
+
+  <div class="actions">
+    <a class="btn" href="{{ url_for('detail', opportunity_id=opp.id) }}">← Back to opportunity</a>
+    <a class="btn" href="{{ url_for('resume_download', fmt='txt') }}">⬇ Download base .txt</a>
+  </div>
+
+  <h3 class="section-title">Preview</h3>
+  <pre class="resume-preview">{{ text }}</pre>
+{% endblock %}

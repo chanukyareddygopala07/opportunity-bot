@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Applications — Aawara{% endblock %}
+{% block content %}
+  <h2 class="section-title">Your applications</h2>
+  <p class="muted">Track every application in one place. Update a status on the
+    opportunity page or here; deadlines still nudge you from the Urgent tab.</p>
+
+  {% if counts %}
+    <div class="score-breakdown">
+      <span>applied <b>{{ counts.get('applied', 0) }}</b></span>
+      <span>interview <b>{{ counts.get('interview', 0) }}</b></span>
+      <span>offer <b>{{ counts.get('offer', 0) }}</b></span>
+      <span>rejected <b>{{ counts.get('rejected', 0) }}</b></span>
+      <span>withdrawn <b>{{ counts.get('withdrawn', 0) }}</b></span>
+    </div>
+  {% endif %}
+
+  {% if urgent %}
+    <h3 class="section-title">Deadline watch ⏰</h3>
+    <p class="muted">Applications with deadlines that are soon or passed.</p>
+    <div class="items">
+      {% for a in urgent %}
+        <div class="card item">
+          <a class="card-title" href="{{ url_for('detail', opportunity_id=a.opportunity_id) }}">{{ a.title }}</a>
+          <p class="muted">{{ a.organization or 'Unknown org' }}{% if a.deadline %} · deadline {{ a.deadline | short_date }} ({{ a.deadline | days_left }}){% endif %}</p>
+          <span class="app-status app-{{ a.status }}">{{ a.status }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if apps %}
+    <div class="items">
+      {% for a in apps %}
+        <div class="card item">
+          <a class="card-title" href="{{ url_for('detail', opportunity_id=a.opportunity_id) }}">{{ a.title }}</a>
+          <p class="muted">{{ a.organization or 'Unknown org' }}{% if a.location %} · {{ a.location }}{% endif %}</p>
+          <div class="card-top">
+            <span class="app-status app-{{ a.status }}">{{ a.status }}</span>
+            <span class="muted small">applied {{ (a.applied_at or '')[:10] }} · updated {{ (a.updated_at or '')[:10] }}</span>
+          </div>
+          {% if a.notes %}<p class="small muted">📝 {{ a.notes }}</p>{% endif %}
+          <form method="post" action="{{ url_for('update_application_status', opportunity_id=a.opportunity_id) }}" class="inline">
+            <select name="status">
+              {% for s in ('applied', 'interview', 'offer', 'rejected', 'withdrawn') %}
+                <option value="{{ s }}" {{ 'selected' if a.status == s }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-small" type="submit">Update</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_application', opportunity_id=a.opportunity_id) }}" class="inline">
+            <button class="btn btn-small" type="submit">Delete</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">No applications tracked yet. Open any opportunity and press
+      <b>Mark applied</b>.</p>
+  {% endif %}
+{% endblock %}

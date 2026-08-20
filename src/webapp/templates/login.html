@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Login — Aawara{% endblock %}
+{% block content %}
+  <div class="auth-card">
+    <h2 class="section-title">Login</h2>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <div class="oauth-row">
+      <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='google') }}">Continue with Google</a>
+      <a class="btn btn-provider" href="{{ url_for('oauth_start', provider='github') }}">Continue with GitHub</a>
+    </div>
+    <div class="divider"><span>or with password</span></div>
+    <form method="post" class="form">
+      <label>Username
+        <input name="username" required autofocus>
+      </label>
+      <label>Password
+        <input name="password" type="password" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Login</button>
+    </form>
+    <p class="muted small">No account? <a href="{{ url_for('register') }}">Create one</a>.</p>
+  </div>
+{% endblock %}

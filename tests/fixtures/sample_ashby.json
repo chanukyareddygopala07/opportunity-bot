@@ -1,0 +1,51 @@
+{
+  "apiVersion": "2.0",
+  "jobs": [
+    {
+      "id": "aaa",
+      "title": "ML Research Internship",
+      "department": "AI Research",
+      "team": "Research",
+      "location": "Remote",
+      "secondaryLocations": [],
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "employmentType": "Internship",
+      "publishedAt": "2026-06-02T10:00:00.000+00:00",
+      "applyUrl": "https://jobs.ashbyhq.com/example/aaa/application",
+      "jobUrl": "https://jobs.ashbyhq.com/example/aaa",
+      "descriptionPlain": "Research ML systems with our team.",
+      "isListed": true
+    },
+    {
+      "id": "bbb",
+      "title": "Product Designer",
+      "department": "Design",
+      "team": "Design",
+      "location": "San Francisco",
+      "isRemote": false,
+      "workplaceType": "Onsite",
+      "employmentType": "FullTime",
+      "publishedAt": "2026-05-01T10:00:00.000+00:00",
+      "applyUrl": "https://jobs.ashbyhq.com/example/bbb/application",
+      "jobUrl": "https://jobs.ashbyhq.com/example/bbb",
+      "descriptionPlain": "Design our product.",
+      "isListed": true
+    },
+    {
+      "id": "ccc",
+      "title": "Software Engineer, Machine Learning",
+      "department": "Engineering",
+      "team": "Platform",
+      "location": "London",
+      "isRemote": true,
+      "workplaceType": "Hybrid",
+      "employmentType": "FullTime",
+      "publishedAt": "2026-04-20T10:00:00.000+00:00",
+      "applyUrl": "https://jobs.ashbyhq.com/example/ccc/application",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ccc",
+      "descriptionPlain": "Build ML infra.",
+      "isListed": true
+    }
+  ]
+}

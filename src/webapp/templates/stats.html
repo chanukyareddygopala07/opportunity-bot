@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Stats — Aawara{% endblock %}
+{% block content %}
+  <h2 class="section-title">Pipeline stats</h2>
+  <div class="cards-grid">
+    <div class="stat">
+      <div class="stat-value">{{ stats.counts.opportunities }}</div>
+      <div class="stat-label">opportunities stored</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ stats.counts.verified }}</div>
+      <div class="stat-label">verified</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ stats.counts.sources }}</div>
+      <div class="stat-label">sources</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ stats.counts.notifications }}</div>
+      <div class="stat-label">notifications recorded</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ stats.counts.ai_assessments }}</div>
+      <div class="stat-label">AI assessments</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{ stats.counts.duplicates }}</div>
+      <div class="stat-label">duplicates hidden</div>
+    </div>
+  </div>
+
+  {% if stats.last_pipeline %}
+    <h2 class="section-title">Last pipeline run</h2>
+    <p class="muted">Started {{ stats.last_pipeline.started_at }} · {{ stats.last_pipeline.message }}</p>
+  {% endif %}
+
+  <h2 class="section-title">Arjun &amp; Vidya — recent scouting runs</h2>
+  <p class="muted small">Both bots run every 2 hours. Each row is one source checked by one bot.</p>
+  <table class="facts">
+    <thead><tr><th>Bot</th><th>Source</th><th>Raw</th><th>New</th><th>Dups</th><th>Eligible</th><th>Unclear</th><th>Rejected</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for run in runs %}
+        <tr>
+          <td>
+            {% if run.scout and 'internship' in run.scout %}<span class="bot-badge">🏹 Arjun</span>
+            {% elif run.scout %}<span class="bot-badge">🪷 Vidya</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="small">{{ run.source_name }}</td>
+          <td>{{ run.raw_items or 0 }}</td>
+          <td>{{ run.stored_new or 0 }}</td>
+          <td>{{ run.duplicates or 0 }}</td>
+          <td>{{ run.eligible or 0 }}</td>
+          <td>{{ run.unclear or 0 }}</td>
+          <td>{{ run.not_eligible or 0 }}</td>
+          <td class="small muted">{{ run.error or '' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2 class="section-title">Recent runs</h2>
+  <table class="facts">
+    <thead><tr><th>Time</th><th>Workflow</th><th>Step</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for log in logs %}
+        <tr>
+          <td>{{ log.started_at | short_date }}</td>
+          <td>{{ log.workflow }}</td>
+          <td>{{ log.step }}</td>
+          <td><span class="tag {{ 'tag-ok' if log.status == 'success' else 'tag-no' }}">{{ log.status }}</span></td>
+          <td class="small">{{ log.message }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

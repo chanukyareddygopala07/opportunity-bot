@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Autofill — Aawara{% endblock %}
+{% block content %}
+  <h2 class="section-title">Autofill — Chrome extension</h2>
+  <p class="muted">The extension fills application forms (Lever, Greenhouse,
+    Ashby, and generic forms) with the facts from your Aawara resume — and
+    nothing else. No data ever leaves your computer except to your own Aawara
+    server for the resume payload.</p>
+
+  <div class="card">
+    <h3>1 · Generate your API token</h3>
+    <p class="muted">This token lets the extension read your resume from your
+      own Aawara instance. Treat it like a password.</p>
+    <form method="post" class="inline">
+      {% if has_token %}
+        <span class="tag tag-ok">Token exists — you can regenerate it any time</span>
+      {% else %}
+        <span class="tag tag-mid">No token yet</span>
+      {% endif %}
+      <button class="btn btn-primary" type="submit">Generate / regenerate token</button>
+    </form>
+    <p class="muted small">We only store a hash of the token. Once you leave
+      this page the raw token is shown nowhere else — copy it now.</p>
+  </div>
+
+  <div class="card">
+    <h3>2 · Load the extension</h3>
+    <ol>
+      <li>Open <code>chrome://extensions</code> in Chrome.</li>
+      <li>Turn on <b>Developer mode</b> (top-right).</li>
+      <li>Click <b>Load unpacked</b> and pick the <code>extension/</code> folder
+        in the Aawara repo.</li>
+      <li>Pin the <b>🎯 Aawara Autofill</b> extension.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>3 · Set server URL + token in the options page</h3>
+    <p class="muted">Right-click the extension icon → <b>Options</b>, then enter:</p>
+    <ul class="notes-list">
+      <li><b>Server URL</b> — your Aawara origin, e.g. <code>http://localhost:8080</code> (no trailing slash).</li>
+      <li><b>API token</b> — the token from step 1 (paste, don't type).</li>
+      <li>Save, then open any application form and click the extension icon → <b>Fill form</b>.</li>
+    </ul>
+    <p class="muted small">Fields are matched by label/placeholder/name heuristics.
+      Only empty fields are filled — your typed answers are never overwritten.</p>
+  </div>
+{% endblock %}

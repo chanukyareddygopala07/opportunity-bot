@@ -1,0 +1,12 @@
+.env
+n8n_data/
+data/
+*.db
+*.sqlite
+credentials/
+logs/
+.DS_Store__pycache__/
+*.pyc
+.pytest_cache/
+
+.DS_Store

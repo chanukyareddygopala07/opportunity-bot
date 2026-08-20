@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_items.html" import item_row, section %}
+{% block title %}{{ (kind or 'All') | title }} — Aawara{% endblock %}
+{% block content %}
+  {{ section((kind or 'All opportunities') | title, total) }}
+
+  {% if review %}
+    <div class="notice">
+      Review queue: these opportunities could not be confirmed as eligible
+      (missing info, foreign onsite roles, etc.). They are not shown by
+      default. Check the source before applying.
+    </div>
+  {% endif %}
+
+  <form class="filterbar" method="get" action="{{ request.path }}">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search title, org, location…">
+    <select name="status">
+      <option value="publishable" {{ 'selected' if not review }}>Published (recommended)</option>
+      <option value="unclear" {{ 'selected' if review }}>Review queue</option>
+    </select>
+    <select name="sort">
+      <option value="score" {{ 'selected' if sort == 'score' }}>Score</option>
+      <option value="deadline" {{ 'selected' if sort == 'deadline' }}>Deadline</option>
+      <option value="newest" {{ 'selected' if sort == 'newest' }}>Newest</option>
+    </select>
+    <button class="btn btn-primary" type="submit">Filter</button>
+    <a class="btn" href="{{ request.path }}">Reset</a>
+  </form>
+
+  {% if not scored %}
+    <p class="muted">No opportunities found.</p>
+  {% else %}
+    {% for opp, score, status, reasons, missing, breakdown in scored %}
+      {{ item_row(opp, score, status, reasons, breakdown) }}
+    {% endfor %}
+
+    {% if pages > 1 %}
+      <nav class="pagination">
+        {% if page > 1 %}
+          <a class="btn btn-small" href="?page={{ page - 1 }}&sort={{ sort }}&q={{ query }}">‹ Prev</a>
+        {% endif %}
+        <span class="muted">Page {{ page }} of {{ pages }}</span>
+        {% if page < pages %}
+          <a class="btn btn-small" href="?page={{ page + 1 }}&sort={{ sort }}&q={{ query }}">Next ›</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% endif %}
+{% endblock %}

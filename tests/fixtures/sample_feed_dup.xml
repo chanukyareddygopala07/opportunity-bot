@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Mirror Feed</title>
+    <link>https://mirror.example/</link>
+    <description>Same item, different feed</description>
+    <item>
+      <title>Call for applications: Summer Research Fellowship 2026</title>
+      <link>https://example-univ.ac.in/news/summer-research-fellowship-2026</link>
+      <description>Applications open for Indian undergraduates. Stipend provided.</description>
+      <pubDate>Mon, 01 Jun 2026 10:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

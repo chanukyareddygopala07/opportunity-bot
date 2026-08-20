@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_items.html" import item_row, section %}
+{% block title %}Aawara — internships & fellowships for Indian students{% endblock %}
+{% block content %}
+  <section class="hero">
+    <h1>Aawara — every opportunity, everywhere</h1>
+    <p>
+      Arjun &amp; Vidya work 24/7 — they comb official company boards, Indian
+      government portals, IIT/IISER/NIT pages and global programs so you can
+      find internships, fellowships, scholarships and research opportunities
+      where <strong>Indian students are eligible</strong>. Rudra helps you
+      tailor your resume and prepare for interviews.
+    </p>
+    <div class="chips">
+      <span>{{ total }} stored opportunities</span>
+      <span>{{ fresh | length }} recently added</span>
+      <span>{{ matches | length }} best matches</span>
+      <span>{{ urgent | length }} deadlines soon</span>
+    </div>
+  </section>
+
+  <div class="bot-grid">
+    <div class="bot-card">
+      <h3>🏹 Arjun</h3>
+      <p class="muted small">Internships &amp; jobs — Indian startups, MNCs and global companies. Checks official ATS boards (Greenhouse, Lever, Ashby), YC startups and Indian startup listings every 2 hours.</p>
+      <a class="btn btn-small" href="/internships">Browse internships</a>
+    </div>
+    <div class="bot-card">
+      <h3>🪷 Vidya</h3>
+      <p class="muted small">Fellowships, scholarships &amp; research — IIT/NIT/IISER programs, government portals (AICTE, NSP, NITI Aayog), and global programs (NSF REU, DAAD, Mitacs, Fulbright, Chevening).</p>
+      <a class="btn btn-small" href="/fellowships">Browse fellowships</a>
+    </div>
+    <div class="bot-card">
+      <h3>🧭 Rudra</h3>
+      <p class="muted small">Your AI career guide — interview prep, career direction, resume tailoring. Runs locally (or on your API key), advisory-only, never invents facts.</p>
+      <a class="btn btn-small" href="{{ url_for('rudra') }}">Talk to Rudra</a>
+    </div>
+  </div>
+
+  {% if not g.user %}
+    <div class="notice">
+      <strong>Tip:</strong>
+      <a href="{{ url_for('register') }}">Create an account</a> to get
+      personalized match scores based on your degree, year, branch, CGPA and skills.
+    </div>
+  {% endif %}
+
+  {% if matches %}
+    {{ section('Best matches for you') }}
+    {% for opp, score, status, breakdown in matches %}
+      {{ item_row(opp, score, status, [], breakdown) }}
+    {% endfor %}
+  {% endif %}
+
+  {% if fresh %}
+    {{ section('Newly collected', fresh | length) }}
+    {% for opp in fresh %}
+      {{ item_row(opp, opp.match_score, opp.eligibility_status, [], None) }}
+    {% endfor %}
+  {% endif %}
+
+  {% if urgent %}
+    {{ section('Deadlines soon', urgent | length) }}
+    {% for opp in urgent %}
+      {{ item_row(opp, opp.match_score, opp.eligibility_status, [], None) }}
+    {% endfor %}
+  {% endif %}
+{% endblock %}

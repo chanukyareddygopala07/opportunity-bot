@@ -1,0 +1,62 @@
+{
+  "groups": [
+    {
+      "name": "India — internships & jobs",
+      "note": "These platforms have no public API and prohibit automated collection. Aawara never scrapes them — open them directly.",
+      "items": [
+        {"name": "Internshala", "url": "https://internshala.com/internships/", "note": "Largest Indian internship board"},
+        {"name": "Naukri", "url": "https://www.naukri.com/internship-jobs", "note": "General jobs + internships"},
+        {"name": "Cutshort", "url": "https://cutshort.io/jobs", "note": "Indian tech/startup roles"},
+        {"name": "Hirist", "url": "https://www.hirist.com/", "note": "Tech jobs & internships"},
+        {"name": "Instahyre", "url": "https://www.instahyre.com/jobs/", "note": "Tech/startup hiring"},
+        {"name": "Wellfound", "url": "https://wellfound.com/jobs", "note": "Startup jobs, US + remote"},
+        {"name": "National Career Service", "url": "https://www.ncs.gov.in/", "note": "Government of India career platform"},
+        {"name": "Digital India Internship", "url": "https://www.digitalindia.gov.in/internship/", "note": "MeitY scheme via gov portal"}
+      ]
+    },
+    {
+      "name": "Global boards",
+      "note": "No public API / protected content — browse directly. Aawara only links, never scrapes.",
+      "items": [
+        {"name": "LinkedIn Jobs", "url": "https://www.linkedin.com/jobs/", "note": "Global jobs + internships"},
+        {"name": "Indeed", "url": "https://www.indeed.com/", "note": "Global jobs"},
+        {"name": "Glassdoor", "url": "https://www.glassdoor.com/Job/jobs.htm", "note": "Jobs + company reviews"},
+        {"name": "Handshake", "url": "https://app.joinhandshake.com/", "note": "Student/graduate opportunities (college login)"},
+        {"name": "Simplify", "url": "https://simplify.jobs/", "note": "Tech jobs/internships + autofill"},
+        {"name": "YC Work at a Startup", "url": "https://www.workatastartup.com/jobs", "note": "YC startup jobs"},
+        {"name": "AIESEC", "url": "https://aiesec.org/", "note": "International exchanges"}
+      ]
+    },
+    {
+      "name": "Fellowships & research (official portals)",
+      "note": "Official program pages — eligibility varies by program; verify before applying.",
+      "items": [
+        {"name": "NSF REU Directory", "url": "https://www.nsf.gov/crssprgm/reu/", "note": "US undergrad research — US-citizenship restricted by default"},
+        {"name": "DAAD Scholarships", "url": "https://www.daad.de/en/", "note": "Germany research + scholarships"},
+        {"name": "EURAXESS", "url": "https://euraxess.ec.europa.eu/jobs", "note": "European research positions"},
+        {"name": "Erasmus+", "url": "https://erasmus-plus.ec.europa.eu/", "note": "European mobility"},
+        {"name": "Mitacs", "url": "https://www.mitacs.ca/", "note": "Canada research internships"},
+        {"name": "RIKEN", "url": "https://www.riken.jp/en/careers/", "note": "Japan research"},
+        {"name": "JSPS", "url": "https://www.jsps.go.jp/english/", "note": "Japan Society for the Promotion of Science"},
+        {"name": "Fulbright", "url": "https://foreign.fulbrightonline.org/", "note": "US exchange programs"},
+        {"name": "Chevening", "url": "https://www.chevening.org/", "note": "UK government scholarships"},
+        {"name": "Commonwealth Scholarships", "url": "https://commonwealthscholarships.org/", "note": "UK Commonwealth scholarships"}
+      ]
+    },
+    {
+      "name": "IIT / IISc / IISER / NIT research & internships",
+      "note": "Official institute pages. Many professor/lab openings are only listed on department pages — check those too.",
+      "items": [
+        {"name": "IIT Bombay — internships", "url": "https://www.iitb.ac.in/", "note": "Check department pages for professor openings"},
+        {"name": "IIT Madras — internships", "url": "https://www.iitm.ac.in/content/internships", "note": "Central internship page"},
+        {"name": "IISc — internships", "url": "https://iisc.ac.in/students/internship/", "note": "Undergraduate research"},
+        {"name": "IISER Pune — internships", "url": "https://www.iiserpune.ac.in/education/internships", "note": "Summer + semester internships"},
+        {"name": "NIT Trichy", "url": "https://www.nitt.edu/", "note": "Research openings on dept pages"},
+        {"name": "IIIT Hyderabad", "url": "https://www.iiit.ac.in/", "note": "Research internships"},
+        {"name": "AICTE Internship Portal", "url": "https://internship.aicte-india.org/", "note": "Official AICTE internships"},
+        {"name": "Common Fellowship Portal", "url": "https://fellowships.gov.in/", "note": "Gov of India fellowships (mostly doctoral/postdoc)"},
+        {"name": "National Scholarship Portal", "url": "https://scholarships.gov.in/", "note": "Gov of India scholarships"}
+      ]
+    }
+  ]
+}

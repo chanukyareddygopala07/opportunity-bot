@@ -1,0 +1,48 @@
+{% macro item_row(opp, score, status, reasons, breakdown=None) -%}
+<div class="card">
+  <div class="card-top">
+    <span class="priority">{{ score | priority }}</span>
+    <a class="card-title" href="{{ url_for('detail', opportunity_id=opp.id) }}">
+      {{ opp.title or 'Untitled' }}
+    </a>
+    {% if score is not none %}<span class="score">{{ score }}%</span>{% endif %}
+  </div>
+  <div class="card-meta">
+    {% if opp.organization %}<span>{{ opp.organization }}</span>{% endif %}
+    {% if opp.location %}<span>{{ opp.location }}{% if opp.remote %} (remote){% endif %}</span>{% endif %}
+    {% if opp.deadline %}
+      <span class="deadline">until {{ opp.deadline | short_date }}
+        {%- set d = opp.deadline | days_left %}
+        {%- if d is not none and d >= 0 %} ({{ d }}d){% endif -%}
+      </span>
+    {% elif opp.listed_at %}
+      <span>listed {{ opp.listed_at | list_date }}</span>
+    {% endif %}
+    {% if opp.status == 'expired' %}<span class="tag tag-muted">expired</span>{% endif %}
+    {% if opp.status == 'closed' %}<span class="tag tag-muted">archived</span>{% endif %}
+  </div>
+  {% if breakdown %}
+    <div class="score-breakdown">
+      Eligibility <b>{{ breakdown.eligibility_pct }}%</b>
+      · Career fit <b>{{ breakdown.career_fit if breakdown.career_fit is not none else '—' }}%</b>
+      → Overall <b>{{ breakdown.overall if breakdown.overall is not none else '—' }}%</b>
+    </div>
+  {% endif %}
+  <div class="card-actions">
+    {% if status %}
+      <span class="tag {{ 'tag-ok' if status == 'eligible' else 'tag-mid' if status in ('likely_eligible','unclear') else 'tag-no' }}">
+        {{ status | replace('_', ' ') }}
+      </span>
+    {% endif %}
+    <a class="btn btn-small" href="{{ url_for('detail', opportunity_id=opp.id) }}">Details</a>
+    {% if opp.application_url or opp.official_url or opp.source_url %}
+      <a class="btn btn-small btn-primary" target="_blank" rel="noopener"
+         href="{{ opp.application_url or opp.official_url or opp.source_url }}">Apply</a>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro section(title, count) -%}
+  <h2 class="section-title">{{ title }} {% if count is not none %}<span class="muted">({{ count }})</span>{% endif %}</h2>
+{%- endmacro %}

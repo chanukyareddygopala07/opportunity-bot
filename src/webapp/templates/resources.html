@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Direct sources — Aawara{% endblock %}
+{% block content %}
+  <section class="hero">
+    <h1>Direct sources</h1>
+    <p>
+      These platforms have no public API and prohibit automated collection, so
+      Aawara <strong>never scrapes them</strong> — instead we point you straight
+      at them. For everything else, Arjun &amp; Vidya crawl official boards
+      (Greenhouse, Lever, Ashby), Indian government portals and institute pages
+      every 2 hours and store every listing locally.
+    </p>
+  </section>
+
+  {% for group in groups %}
+    <h2 class="section-title">{{ group.name }}</h2>
+    {% if group.note %}<p class="muted small">{{ group.note }}</p>{% endif %}
+    <div class="resources-grid">
+      {% for item in group['items'] %}
+        <div class="card resource-card">
+          <h3><a target="_blank" rel="noopener" href="{{ item.url }}">{{ item.name }} ↗</a></h3>
+          {% if item.note %}<p class="muted small">{{ item.note }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+{% endblock %}

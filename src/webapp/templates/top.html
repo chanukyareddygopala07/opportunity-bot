@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_items.html" import item_row, section %}
+{% block title %}Top matches — Aawara{% endblock %}
+{% block content %}
+  {{ section('Top matches', scored | length) }}
+  {% if not g.user %}
+    <div class="notice">
+      <strong>Tip:</strong> <a href="{{ url_for('register') }}">Sign in</a> to
+      score matches against your own degree, year, branch and skills.
+    </div>
+  {% endif %}
+  {% for opp, score, status, reasons, missing, breakdown in scored %}
+    {{ item_row(opp, score, status, reasons, breakdown) }}
+  {% endfor %}
+{% endblock %}

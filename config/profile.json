@@ -1,0 +1,50 @@
+{
+  "country": "India",
+  "citizenship": "Indian",
+  "degree": "B.Tech",
+  "degree_level": "Undergraduate",
+  "current_year": 2,
+  "cgpa": null,
+  "eligible_years": [2, 3, 4],
+  "university": null,
+  "branch": "Computer Science and Engineering",
+  "graduation_year": null,
+  "skills": [
+    "C",
+    "C++",
+    "Python",
+    "Data Structures",
+    "Algorithms",
+    "Competitive Programming"
+  ],
+  "interests": [
+    "Software Engineering",
+    "Algorithms",
+    "Artificial Intelligence",
+    "Machine Learning",
+    "Research",
+    "Quantitative Research",
+    "Finance",
+    "Quantitative Finance"
+  ],
+  "preferred": {
+    "paid": true,
+    "fully_funded": true,
+    "remote": true,
+    "india": true,
+    "international": true,
+    "research": true,
+    "software": true,
+    "quant": true,
+    "ai_ml": true
+  },
+  "allow": [
+    "paid_internships",
+    "unpaid_internships",
+    "research_internships",
+    "fellowships",
+    "scholarships",
+    "summer_programs",
+    "open_source_programs"
+  ]
+}
