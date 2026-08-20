@@ -407,7 +407,7 @@ def toggle_saved(opportunity_id):
 def update_opportunity(opportunity_id, **fields):
     allowed = {
         "eligibility_status", "match_score", "verification_status",
-        "status", "saved", "last_seen",
+        "status", "saved", "last_seen", "deadline_status", "trust_score",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
