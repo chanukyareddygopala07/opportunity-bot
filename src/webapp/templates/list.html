@@ -14,10 +14,26 @@
 
   <form class="filterbar" method="get" action="{{ request.path }}">
     <input type="search" name="q" value="{{ query }}" placeholder="Search title, org, location…">
+    <select name="type">
+      <option value="">All types</option>
+      {% for t in schema.OPPORTUNITY_TYPES if t != 'other' %}
+        <option value="{{ t }}" {{ 'selected' if kind == t }}>{{ t | replace('_', ' ') | title }}</option>
+      {% endfor %}
+    </select>
     <select name="status">
       <option value="publishable" {{ 'selected' if not review }}>Published (recommended)</option>
       <option value="unclear" {{ 'selected' if review }}>Review queue</option>
     </select>
+    {% if countries %}
+    <select name="country">
+      <option value="">All countries</option>
+      {% for c in countries %}
+        <option value="{{ c }}" {{ 'selected' if country_arg == c }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <label class="filter-check"><input type="checkbox" name="remote" value="1" {{ 'checked' if remote_arg }}> Remote</label>
+    <label class="filter-check"><input type="checkbox" name="verified" value="1" {{ 'checked' if verified_arg }}> Verified only</label>
     <select name="sort">
       <option value="score" {{ 'selected' if sort == 'score' }}>Score</option>
       <option value="deadline" {{ 'selected' if sort == 'deadline' }}>Deadline</option>

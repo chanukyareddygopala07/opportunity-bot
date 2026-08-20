@@ -9,7 +9,9 @@ from datetime import datetime
 OPPORTUNITY_TYPES = (
     "internship", "fellowship", "scholarship", "research_program",
     "summer_program", "visiting_student_program", "exchange_program",
-    "open_source_program", "other",
+    "open_source_program", "grant", "hackathon", "workshop", "conference",
+    "startup_program", "competition", "job", "volunteer_program",
+    "certificate_course", "mentorship_program", "bootcamp", "other",
 )
 
 CATEGORIES = (
@@ -20,6 +22,54 @@ CATEGORIES = (
 VERIFICATION_STATUSES = ("verified", "official", "unverified", "pending")
 ELIGIBILITY_STATUSES = ("eligible", "likely_eligible", "unclear", "not_eligible", "unknown")
 STATUSES = ("new", "seen", "expired", "closed")
+
+# Type inference: ordered most-specific first. The first matching keyword
+# decides the type; never fabricates — falls back to None.
+TYPE_RULES = (
+    ("hackathon", ("hackathon",)),
+    ("fellowship", ("fellowship", "fellow")),
+    ("scholarship", ("scholarship", "scholar")),
+    ("grant", ("grant",)),
+    ("competition", ("competition", "contest", "olympiad")),
+    ("conference", ("conference",)),
+    ("workshop", ("workshop",)),
+    ("bootcamp", ("bootcamp", "boot camp")),
+    ("certificate_course", ("certificate",)),
+    ("mentorship_program", ("mentorship", "mentor program")),
+    ("volunteer_program", ("volunteer",)),
+    ("exchange_program", ("exchange program", "exchange")),
+    ("startup_program", ("accelerator", "incubator", "startup program")),
+    ("open_source_program", ("open source", "summer of code", "gsoc")),
+    ("visiting_student_program", ("visiting student", "visiting scholar")),
+    ("summer_program", ("summer program", "summer school", "summer intern")),
+    ("research_program", ("research program", "research intern", "research", "lab")),
+    ("internship", ("intern", "internship")),
+    ("job", ("full-time", "full time", "engineer", "developer", "analyst", "sde", "job")),
+)
+
+
+def infer_type(title=None, description=None, category=None):
+    """Best-effort opportunity type from free text (never guesses 'other')."""
+    haystack = " ".join(
+        str(part or "").lower() for part in (title, description, category)
+    )
+    for opp_type, keywords in TYPE_RULES:
+        for keyword in keywords:
+            if keyword in haystack:
+                return opp_type
+    return None
+
+
+# Types that belong to Arjun (work/experience) vs Vidya (study/research).
+ARJUN_TYPES = (
+    "internship", "job", "hackathon", "competition", "bootcamp", "workshop",
+    "conference", "certificate_course", "startup_program",
+)
+VIDYA_TYPES = (
+    "fellowship", "scholarship", "grant", "research_program", "summer_program",
+    "visiting_student_program", "exchange_program", "open_source_program",
+    "mentorship_program", "volunteer_program",
+)
 
 TEXT_FIELDS = (
     "title", "organization", "type", "category", "description", "location",

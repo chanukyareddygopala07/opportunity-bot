@@ -535,7 +535,9 @@ main { padding: 24px 16px 56px; }
 .tag-no { color: var(--no); border-color: var(--no); }
 .tag-muted { color: var(--muted); }
 
-.filterbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.filterbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.filterbar .filter-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.filterbar .filter-check input { accent-color: var(--neon); width: 15px; height: 15px; }
 .filterbar input[type=search] { flex: 1; min-width: 200px; }
 input, select {
   background: var(--bg-soft);

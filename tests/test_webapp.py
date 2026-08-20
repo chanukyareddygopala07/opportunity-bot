@@ -1,7 +1,7 @@
 """Phase 17 — web front-end tests: auth, pages, bookmarks, pipeline hook."""
 import os
 
-from src import db
+from src import db, schema
 from src.webapp import auth, helpers
 
 TMP_DB = os.environ.get("TMP_DB", "/tmp/opp.db")

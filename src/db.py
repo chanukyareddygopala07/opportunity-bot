@@ -4,6 +4,7 @@ Swap get_connection() for a PostgreSQL driver later; the rest stays.
 """
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,6 +103,38 @@ def _migrate(conn):
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)"
         )
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS opportunities_fts USING fts5("
+        "title, organization, description, location, country, "
+        "content='opportunities', content_rowid='id')"
+    )
+    triggers = {
+        r["name"]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+        )
+    }
+    if "opportunities_ai" not in triggers:
+        conn.execute(
+            "CREATE TRIGGER opportunities_ai AFTER INSERT ON opportunities BEGIN "
+            "INSERT INTO opportunities_fts(rowid, title, organization, description, location, country) "
+            "VALUES (new.id, new.title, new.organization, new.description, new.location, new.country); END"
+        )
+    if "opportunities_ad" not in triggers:
+        conn.execute(
+            "CREATE TRIGGER opportunities_ad AFTER DELETE ON opportunities BEGIN "
+            "INSERT INTO opportunities_fts(opportunities_fts, rowid, title, organization, description, location, country) "
+            "VALUES ('delete', old.id, old.title, old.organization, old.description, old.location, old.country); END"
+        )
+    if "opportunities_au" not in triggers:
+        conn.execute(
+            "CREATE TRIGGER opportunities_au AFTER UPDATE ON opportunities BEGIN "
+            "INSERT INTO opportunities_fts(opportunities_fts, rowid, title, organization, description, location, country) "
+            "VALUES ('delete', old.id, old.title, old.organization, old.description, old.location, old.country); "
+            "INSERT INTO opportunities_fts(rowid, title, organization, description, location, country) "
+            "VALUES (new.id, new.title, new.organization, new.description, new.location, new.country); END"
+        )
+    conn.execute("INSERT INTO opportunities_fts(opportunities_fts) VALUES('rebuild')")
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)"
     )
@@ -291,6 +324,30 @@ def upsert_opportunity(opp):
             return cursor.lastrowid
         row = conn.execute("SELECT id FROM opportunities WHERE dedup_key = ?", (opp["dedup_key"],)).fetchone()
         return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+def fts_search_ids(query, limit=100):
+    """Ranked full-text search over title/org/description/location/country.
+
+    Returns a list of opportunity ids, or None when FTS is unavailable so
+    callers can fall back to substring matching.
+    """
+    words = [w.lower() for w in re.findall(r"[\w\-]+", query or "") if len(w) >= 2]
+    if not words:
+        return None
+    match = " AND ".join('"%s"' % w.replace('"', '""') for w in words[:8])
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT rowid FROM opportunities_fts "
+            "WHERE opportunities_fts MATCH ? ORDER BY rank LIMIT ?",
+            (match, int(limit)),
+        ).fetchall()
+        return [r["rowid"] for r in rows]
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return None
     finally:
         conn.close()
 

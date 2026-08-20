@@ -14,7 +14,7 @@ from flask import (
     url_for,
 )
 
-from src import db, store, webhook, worker, ai, deadlines, trust
+from src import db, store, webhook, worker, ai, deadlines, trust, schema
 from src.webapp import auth, helpers, oauth
 
 
@@ -73,17 +73,17 @@ def register_routes(app):
         for label, slug, emoji, opp_type, q in (
             ("Internships", "internships", "💼", "internship", None),
             ("Fellowships", "fellowships", "🎓", "fellowship", None),
-            ("Research", "opportunities", "🔬", None, "research"),
-            ("Scholarships", "opportunities", "🏅", None, "scholarship"),
-            ("Hackathons", "opportunities", "⚡", None, "hackathon"),
-            ("Jobs", "opportunities", "🚀", None, "job"),
-            ("Startups", "opportunities", "🛠️", None, "startup"),
+            ("Research", "opportunities", "🔬", "research_program", None),
+            ("Scholarships", "opportunities", "🏅", "scholarship", None),
+            ("Hackathons", "opportunities", "⚡", "hackathon", None),
+            ("Jobs", "opportunities", "🚀", "job", None),
+            ("Startups", "opportunities", "🛠️", "startup_program", None),
             ("Universities", "opportunities", "🏛️", None, "university"),
         ):
             cats = helpers.filter_items(items, query=q, opp_type=opp_type,
                                         eligibility=publishable)
             categories[label] = {
-                "href": "/" + slug + (("?q=" + q) if q else ""),
+                "href": "/" + slug + (("?type=" + opp_type) if opp_type else (("?q=" + q) if q else "")),
                 "count": len(cats),
                 "emoji": emoji,
             }
@@ -110,6 +110,9 @@ def register_routes(app):
         kind = {"internships": "internship", "fellowships": "fellowship"}.get(
             request.path.strip("/")
         )
+        type_arg = (request.args.get("type") or "").strip().lower()
+        if type_arg in schema.OPPORTUNITY_TYPES:
+            kind = type_arg
         status_args = request.args.getlist("status")
         if status_args and "unclear" in status_args:
             eligibility = ["unclear"]
@@ -122,11 +125,19 @@ def register_routes(app):
             query=request.args.get("q"),
             opp_type=kind,
             eligibility=eligibility,
+            country=request.args.get("country"),
+            remote=request.args.get("remote") == "1",
+            verified_only=request.args.get("verified") == "1",
         )
         sort = request.args.get("sort", "score")
         helpers.sort_items(items, sort)
         page_items, page, pages, total = helpers.paginate(items, request.args.get("page"))
         scored = helpers.score_items(page_items, g.user, by_score=(sort == "score"))
+        countries = sorted({
+            (o.get("country") or o.get("location") or "").strip()
+            for o in db.list_opportunities()
+            if (o.get("country") or o.get("location") or "").strip()
+        })
         return render_template(
             "list.html",
             scored=scored,
@@ -138,6 +149,11 @@ def register_routes(app):
             query=request.args.get("q", ""),
             review=review,
             user=g.user,
+            schema=schema,
+            countries=countries,
+            country_arg=request.args.get("country", ""),
+            remote_arg=request.args.get("remote") == "1",
+            verified_arg=request.args.get("verified") == "1",
         )
 
     @app.route("/review")
