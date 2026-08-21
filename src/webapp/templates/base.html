@@ -34,6 +34,7 @@
         <a href="/internships">Internships</a>
         <a href="/opportunities?q=research">Research</a>
         <a href="/opportunities?q=hackathon">Hackathons</a>
+        <a href="{{ url_for('agents_dashboard') }}">Agents</a>
       </nav>
       <div class="user">
         {% if g.user %}
@@ -74,6 +75,7 @@
       </div>
       <div class="footer-col">
         <h4>Tools</h4>
+        <a href="{{ url_for('agents_dashboard') }}">AAWARA Agents</a>
         <a href="{{ url_for('rudra') }}">Rudra · AI guide</a>
         <a href="{{ url_for('resume_page') }}">Resume builder</a>
         <a href="{{ url_for('autofill_token') }}">Autofill extension</a>

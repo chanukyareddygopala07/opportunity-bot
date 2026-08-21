@@ -294,6 +294,96 @@ def _migrate(conn):
             "model TEXT, "
             "created_at TEXT)"
         )
+    # --- AAWARA Agent System tables ---
+    agent_tables = {
+        row["name"]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    if "agent_tasks" not in agent_tables:
+        conn.execute(
+            "CREATE TABLE agent_tasks ("
+            "id INTEGER PRIMARY KEY, "
+            "task_id TEXT UNIQUE NOT NULL, "
+            "agent_id TEXT NOT NULL, "
+            "job_type TEXT, "
+            "priority TEXT DEFAULT 'medium', "
+            "status TEXT DEFAULT 'QUEUED', "
+            "input_data TEXT, "
+            "output_data TEXT, "
+            "confidence REAL, "
+            "error TEXT, "
+            "retry_count INTEGER DEFAULT 0, "
+            "created_at TEXT, "
+            "started_at TEXT, "
+            "completed_at TEXT, "
+            "duration_ms INTEGER, "
+            "parent_task_id TEXT, "
+            "source_id INTEGER, "
+            "opportunity_id INTEGER)"
+        )
+    if "agent_events" not in agent_tables:
+        conn.execute(
+            "CREATE TABLE agent_events ("
+            "id INTEGER PRIMARY KEY, "
+            "event_type TEXT NOT NULL, "
+            "agent_id TEXT NOT NULL, "
+            "data TEXT, "
+            "created_at TEXT)"
+        )
+    if "agent_metrics" not in agent_tables:
+        conn.execute(
+            "CREATE TABLE agent_metrics ("
+            "id INTEGER PRIMARY KEY, "
+            "agent_id TEXT NOT NULL, "
+            "metric_name TEXT NOT NULL, "
+            "metric_value REAL, "
+            "recorded_at TEXT)"
+        )
+    if "opportunity_evidence" not in agent_tables:
+        conn.execute(
+            "CREATE TABLE opportunity_evidence ("
+            "id INTEGER PRIMARY KEY, "
+            "opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE, "
+            "field TEXT NOT NULL, "
+            "value TEXT, "
+            "source_url TEXT, "
+            "source_text TEXT, "
+            "confidence REAL, "
+            "agent_id TEXT, "
+            "created_at TEXT)"
+        )
+    if "opportunity_changes" not in agent_tables:
+        conn.execute(
+            "CREATE TABLE opportunity_changes ("
+            "id INTEGER PRIMARY KEY, "
+            "opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE, "
+            "change_type TEXT NOT NULL, "
+            "old_value TEXT, "
+            "new_value TEXT, "
+            "detected_at TEXT, "
+            "notified INTEGER DEFAULT 0)"
+        )
+    # Agent indexes
+    agent_indexes = {
+        row["name"]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+    }
+    for index, ddl in (
+        ("idx_agent_tasks_agent_id",
+         "CREATE INDEX IF NOT EXISTS idx_agent_tasks_agent_id ON agent_tasks(agent_id)"),
+        ("idx_agent_tasks_status",
+         "CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status)"),
+        ("idx_agent_events_type",
+         "CREATE INDEX IF NOT EXISTS idx_agent_events_type ON agent_events(event_type)"),
+        ("idx_agent_events_agent",
+         "CREATE INDEX IF NOT EXISTS idx_agent_events_agent ON agent_events(agent_id)"),
+        ("idx_evidence_opportunity",
+         "CREATE INDEX IF NOT EXISTS idx_evidence_opportunity ON opportunity_evidence(opportunity_id)"),
+        ("idx_changes_opportunity",
+         "CREATE INDEX IF NOT EXISTS idx_changes_opportunity ON opportunity_changes(opportunity_id)"),
+    ):
+        if index not in agent_indexes:
+            conn.execute(ddl)
 
 
 def _dumps(value):
@@ -1511,5 +1601,110 @@ def clear_chat_history(user_id):
     try:
         conn.execute("DELETE FROM chat_messages WHERE user_id = ?", (user_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+# --- Agent system helpers ---
+
+def record_agent_metric(agent_id, metric_name, metric_value):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO agent_metrics (agent_id, metric_name, metric_value, recorded_at) "
+            "VALUES (?, ?, ?, ?)",
+            (agent_id, metric_name, metric_value, now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_agent_task_stats(agent_id=None):
+    conn = get_connection()
+    try:
+        if agent_id:
+            rows = conn.execute(
+                "SELECT agent_id, status, COUNT(*) as cnt, AVG(duration_ms) as avg_duration "
+                "FROM agent_tasks WHERE agent_id = ? GROUP BY agent_id, status",
+                (agent_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT agent_id, status, COUNT(*) as cnt, AVG(duration_ms) as avg_duration "
+                "FROM agent_tasks GROUP BY agent_id, status"
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_agent_event_counts():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT agent_id, COUNT(*) as cnt FROM agent_events GROUP BY agent_id"
+        ).fetchall()
+        return {r["agent_id"]: r["cnt"] for r in rows}
+    finally:
+        conn.close()
+
+
+def record_evidence(opportunity_id, field, value, source_url=None,
+                    source_text=None, confidence=0.0, agent_id=None):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO opportunity_evidence "
+            "(opportunity_id, field, value, source_url, source_text, confidence, agent_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (opportunity_id, field, str(value), source_url, source_text,
+             confidence, agent_id, now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_evidence(opportunity_id, field=None):
+    conn = get_connection()
+    try:
+        if field:
+            rows = conn.execute(
+                "SELECT * FROM opportunity_evidence WHERE opportunity_id = ? AND field = ? "
+                "ORDER BY id DESC",
+                (opportunity_id, field),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM opportunity_evidence WHERE opportunity_id = ? ORDER BY id DESC",
+                (opportunity_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def record_opportunity_change(opportunity_id, change_type, old_value=None, new_value=None):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO opportunity_changes "
+            "(opportunity_id, change_type, old_value, new_value, detected_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (opportunity_id, change_type, old_value, new_value, now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_pending_changes():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM opportunity_changes WHERE notified = 0 ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

@@ -175,6 +175,107 @@ def create_app():
         summary = worker.run_pipeline()
         return {"ok": True, "summary": summary}
 
+    # --- AAWARA Agent System endpoints ---
+
+    @app.get("/api/agents")
+    def list_agents():
+        from src.agents.orchestrator import get_orchestrator
+        orch = get_orchestrator()
+        if not orch.get_all_agents():
+            from src.agents.orchestrator import init_orchestrator
+            orch = init_orchestrator()
+        return {
+            "success": True,
+            "data": [a.to_dict() for a in orch.get_all_agents()],
+        }
+
+    @app.get("/api/agents/{agent_id}")
+    def agent_detail(agent_id: str):
+        from src.agents.orchestrator import get_orchestrator
+        orch = get_orchestrator()
+        agent = orch.get_agent(agent_id)
+        if not agent:
+            raise HTTPException(404, f"Agent {agent_id} not found")
+        conn = db.get_connection()
+        try:
+            recent_tasks = conn.execute(
+                "SELECT * FROM agent_tasks WHERE agent_id = ? ORDER BY id DESC LIMIT 20",
+                (agent_id,),
+            ).fetchall()
+            recent_events = conn.execute(
+                "SELECT * FROM agent_events WHERE agent_id = ? ORDER BY id DESC LIMIT 20",
+                (agent_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return {
+            "success": True,
+            "data": {
+                "agent": agent.to_dict(),
+                "recent_tasks": [dict(r) for r in recent_tasks],
+                "recent_events": [dict(r) for r in recent_events],
+            },
+        }
+
+    @app.get("/api/agent-tasks")
+    def list_agent_tasks(
+        agent_id: str | None = None,
+        status: str | None = None,
+        limit: int = Query(50, le=200),
+    ):
+        conn = db.get_connection()
+        try:
+            sql = "SELECT * FROM agent_tasks"
+            params = []
+            if agent_id:
+                sql += " WHERE agent_id = ?"
+                params.append(agent_id)
+            if status:
+                sql += " AND status = ?" if params else " WHERE status = ?"
+                params.append(status)
+            sql += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+        return {"success": True, "data": [dict(r) for r in rows]}
+
+    @app.get("/api/agent-events")
+    def list_agent_events(
+        agent_id: str | None = None,
+        event_type: str | None = None,
+        limit: int = Query(50, le=200),
+    ):
+        conn = db.get_connection()
+        try:
+            sql = "SELECT * FROM agent_events"
+            params = []
+            if agent_id:
+                sql += " WHERE agent_id = ?"
+                params.append(agent_id)
+            if event_type:
+                sql += " AND event_type = ?" if params else " WHERE event_type = ?"
+                params.append(event_type)
+            sql += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(sql, params).fetchall()
+        finally:
+            conn.close()
+        return {"success": True, "data": [dict(r) for r in rows]}
+
+    @app.post("/api/agents/{agent_id}/run")
+    def run_agent(agent_id: str):
+        from src.agents.orchestrator import get_orchestrator
+        orch = get_orchestrator()
+        result = orch.run_agent(agent_id, {})
+        return {"success": True, "data": result.to_dict()}
+
+    @app.get("/api/pipeline/status")
+    def pipeline_status():
+        from src.agents.orchestrator import get_orchestrator
+        orch = get_orchestrator()
+        return {"success": True, "data": orch.get_pipeline_status()}
+
     return app
 
 

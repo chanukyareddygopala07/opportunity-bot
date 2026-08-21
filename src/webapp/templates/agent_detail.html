@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}{{ agent.agent_name }} — AAWARA Agents{% endblock %}
+{% block content %}
+<main class="container">
+  <div class="page-header">
+    <a href="/agents" class="back-link">&larr; All Agents</a>
+    <h1>{{ agent.agent_name }}</h1>
+    <p class="page-subtitle">{{ agent.description }}</p>
+  </div>
+
+  <div class="agent-info-grid">
+    <div class="info-card">
+      <h3>Status</h3>
+      <span class="status-badge {{ agent.status }}">{{ agent.status }}</span>
+    </div>
+    <div class="info-card">
+      <h3>Health</h3>
+      <span class="health-badge {{ agent.health }}">{{ agent.health }}</span>
+    </div>
+    <div class="info-card">
+      <h3>Category</h3>
+      <span class="category-badge {{ agent.category }}">{{ agent.category }}</span>
+    </div>
+    <div class="info-card">
+      <h3>Total Tasks</h3>
+      <span class="big-number">{{ agent.metrics.total_tasks }}</span>
+    </div>
+    <div class="info-card">
+      <h3>Success Rate</h3>
+      <span class="big-number">
+        {% if agent.metrics.total_tasks > 0 %}
+        {{ "%.0f"|format(agent.metrics.successful_tasks / agent.metrics.total_tasks * 100) }}%
+        {% else %}—{% endif %}
+      </span>
+    </div>
+    <div class="info-card">
+      <h3>Avg Confidence</h3>
+      <span class="big-number">{{ "%.1f"|format(agent.metrics.avg_confidence * 100) }}%</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Recent Tasks</h2>
+    {% if tasks %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Task ID</th>
+          <th>Status</th>
+          <th>Confidence</th>
+          <th>Duration</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+        <tr>
+          <td><code>{{ task.task_id[:12] }}</code></td>
+          <td><span class="status-badge {{ task.status }}">{{ task.status }}</span></td>
+          <td>{{ "%.1f"|format((task.confidence or 0) * 100) }}%</td>
+          <td>{{ task.duration_ms or '—' }}ms</td>
+          <td>{{ task.created_at[:19] if task.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No tasks recorded yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h2>Recent Events</h2>
+    {% if events %}
+    <div class="event-list">
+      {% for event in events %}
+      <div class="event-item">
+        <span class="event-type">{{ event.event_type }}</span>
+        <span class="event-data">{{ event.data[:100] if event.data else '' }}</span>
+        <span class="event-time">{{ event.created_at[:19] if event.created_at else '' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No events recorded yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h2>Performance by Status</h2>
+    {% if task_stats %}
+    <div class="stats-grid">
+      {% for stat in task_stats %}
+      <div class="stat-card">
+        <span class="stat-status">{{ stat.status }}</span>
+        <span class="stat-count">{{ stat.cnt }}</span>
+        <span class="stat-avg">avg {{ "%.0f"|format(stat.avg_duration or 0) }}ms</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No task data available.</p>
+    {% endif %}
+  </div>
+</main>
+
+<style>
+.container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+.back-link { color: #00ff41; text-decoration: none; font-size: 0.9rem; display: inline-block; margin-bottom: 1rem; }
+.page-header h1 { font-size: 2rem; color: #00ff41; margin: 0.5rem 0; }
+.page-subtitle { color: #888; }
+
+.agent-info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.info-card { background: #111; border: 1px solid #222; border-radius: 8px; padding: 1rem; text-align: center; }
+.info-card h3 { font-size: 0.7rem; text-transform: uppercase; color: #666; margin-bottom: 0.5rem; }
+.big-number { font-size: 1.5rem; font-weight: bold; color: #fff; }
+
+.status-badge { padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase; }
+.status-badge.idle { background: #222; color: #888; }
+.status-badge.running { background: #3d3a0a; color: #f0ad4e; }
+.status-badge.completed { background: #0a3d0a; color: #00ff41; }
+.status-badge.failed { background: #3d0a0a; color: #d9534f; }
+
+.health-badge { padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase; }
+.health-badge.healthy { background: #0a3d0a; color: #00ff41; }
+.health-badge.degraded { background: #3d3a0a; color: #f0ad4e; }
+.health-badge.failing { background: #3d0a0a; color: #d9534f; }
+
+.category-badge { padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase; }
+.category-badge.discovery { background: #0a3d0a; color: #00ff41; }
+.category-badge.intelligence { background: #0a1a3d; color: #5b8cff; }
+.category-badge.user { background: #3d3a0a; color: #f0ad4e; }
+.category-badge.quality { background: #3d0a0a; color: #d9534f; }
+
+.section { margin: 2rem 0; }
+.section h2 { font-size: 1.3rem; color: #fff; margin-bottom: 1rem; }
+
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th, .data-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #222; }
+.data-table th { font-size: 0.75rem; text-transform: uppercase; color: #666; }
+.data-table td { color: #ccc; font-size: 0.85rem; }
+.data-table code { color: #00ff41; font-size: 0.8rem; }
+
+.event-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.event-item { display: flex; gap: 1rem; padding: 0.5rem; background: #111; border-radius: 4px; font-size: 0.8rem; }
+.event-type { color: #00ff41; min-width: 200px; }
+.event-data { color: #888; flex-grow: 1; }
+.event-time { color: #666; min-width: 140px; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1rem; }
+.stat-card { background: #111; border: 1px solid #222; border-radius: 8px; padding: 1rem; text-align: center; }
+.stat-status { display: block; font-size: 0.7rem; text-transform: uppercase; color: #666; margin-bottom: 0.5rem; }
+.stat-count { display: block; font-size: 1.3rem; font-weight: bold; color: #fff; }
+.stat-avg { display: block; font-size: 0.7rem; color: #888; margin-top: 0.25rem; }
+
+.empty-state { color: #666; text-align: center; padding: 2rem; background: #111; border-radius: 8px; }
+</style>
+{% endblock %}

@@ -932,6 +932,105 @@ def register_routes(app):
     def health():
         return {"ok": True}
 
+    # --- AAWARA Agent Dashboard ---
+
+    @app.route("/agents")
+    def agents_dashboard():
+        from src.agents.orchestrator import get_orchestrator, init_orchestrator
+        orch = get_orchestrator()
+        if not orch.get_all_agents():
+            orch = init_orchestrator()
+        agents = [a.to_dict() for a in orch.get_all_agents()]
+
+        # Get real metrics from database
+        conn = db.get_connection()
+        try:
+            agent_task_counts = {}
+            rows = conn.execute(
+                "SELECT agent_id, status, COUNT(*) as cnt FROM agent_tasks "
+                "GROUP BY agent_id, status"
+            ).fetchall()
+            for r in rows:
+                aid = r["agent_id"]
+                if aid not in agent_task_counts:
+                    agent_task_counts[aid] = {}
+                agent_task_counts[aid][r["status"]] = r["cnt"]
+
+            agent_event_counts = {}
+            rows = conn.execute(
+                "SELECT agent_id, COUNT(*) as cnt FROM agent_events "
+                "GROUP BY agent_id"
+            ).fetchall()
+            for r in rows:
+                agent_event_counts[r["agent_id"]] = r["cnt"]
+
+            recent_events = conn.execute(
+                "SELECT * FROM agent_events ORDER BY id DESC LIMIT 12"
+            ).fetchall()
+
+            task_stats = conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM agent_tasks GROUP BY status"
+            ).fetchall()
+            task_summary = {r["status"]: r["cnt"] for r in task_stats}
+        finally:
+            conn.close()
+
+        for agent in agents:
+            aid = agent["agent_id"]
+            agent["task_counts"] = agent_task_counts.get(aid, {})
+            agent["event_count"] = agent_event_counts.get(aid, 0)
+
+        return render_template(
+            "agents.html",
+            agents=agents,
+            recent_events=[dict(r) for r in recent_events],
+            task_summary=task_summary,
+            user=g.user,
+        )
+
+    @app.route("/agents/<agent_id>")
+    def agent_detail_page(agent_id):
+        from src.agents.orchestrator import get_orchestrator
+        orch = get_orchestrator()
+        agent = orch.get_agent(agent_id)
+        if not agent:
+            abort(404)
+
+        conn = db.get_connection()
+        try:
+            recent_tasks = conn.execute(
+                "SELECT * FROM agent_tasks WHERE agent_id = ? ORDER BY id DESC LIMIT 30",
+                (agent_id,),
+            ).fetchall()
+            recent_events = conn.execute(
+                "SELECT * FROM agent_events WHERE agent_id = ? ORDER BY id DESC LIMIT 30",
+                (agent_id,),
+            ).fetchall()
+            task_stats = conn.execute(
+                "SELECT status, COUNT(*) as cnt, AVG(duration_ms) as avg_duration "
+                "FROM agent_tasks WHERE agent_id = ? GROUP BY status",
+                (agent_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        return render_template(
+            "agent_detail.html",
+            agent=agent.to_dict(),
+            tasks=[dict(r) for r in recent_tasks],
+            events=[dict(r) for r in recent_events],
+            task_stats=[dict(r) for r in task_stats],
+            user=g.user,
+        )
+
+    @app.route("/agents/<agent_id>/run", methods=["POST"])
+    @_admin_required
+    def agent_run(agent_id):
+        from src.agents.orchestrator import get_orchestrator
+        orch = get_orchestrator()
+        result = orch.run_agent(agent_id, {})
+        return redirect(url_for("agent_detail_page", agent_id=agent_id))
+
     @app.route("/stats.json")
     def stats_json():
         if not webhook._authorized(request.headers):

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}AAWARA Agents — Agent Monitoring{% endblock %}
+{% block content %}
+<main class="container">
+  <div class="page-header">
+    <h1>AAWARA Agents</h1>
+    <p class="page-subtitle">16 specialized agents powering opportunity intelligence</p>
+  </div>
+
+  <div class="agent-pipeline">
+    <div class="pipeline-section">
+      <h3>DISCOVERY</h3>
+      <div class="pipeline-arrow">&darr;</div>
+    </div>
+    <div class="pipeline-section">
+      <h3>INTELLIGENCE</h3>
+      <div class="pipeline-arrow">&darr;</div>
+    </div>
+    <div class="pipeline-section">
+      <h3>QUALITY</h3>
+      <div class="pipeline-arrow">&darr;</div>
+    </div>
+    <div class="pipeline-section">
+      <h3>USER</h3>
+    </div>
+  </div>
+
+  <div class="agent-grid">
+    {% for agent in agents %}
+    <a href="/agents/{{ agent.agent_id }}" class="agent-card">
+      <div class="agent-card-header">
+        <span class="agent-status-dot {{ 'active' if agent.status == 'idle' else agent.status }}"></span>
+        <span class="agent-category {{ agent.category }}">{{ agent.category }}</span>
+      </div>
+      <h3 class="agent-name">{{ agent.agent_name }}</h3>
+      <p class="agent-desc">{{ agent.description }}</p>
+      <div class="agent-metrics">
+        <div class="metric">
+          <span class="metric-value">{{ agent.metrics.total_tasks }}</span>
+          <span class="metric-label">Tasks</span>
+        </div>
+        <div class="metric">
+          <span class="metric-value">{{ agent.metrics.successful_tasks }}</span>
+          <span class="metric-label">Success</span>
+        </div>
+        <div class="metric">
+          <span class="metric-value">{{ "%.1f"|format(agent.metrics.avg_confidence * 100) }}%</span>
+          <span class="metric-label">Confidence</span>
+        </div>
+      </div>
+      <div class="agent-health">
+        <span class="health-badge {{ agent.health }}">{{ agent.health }}</span>
+        {% if agent.metrics.last_run %}
+        <span class="last-run">Last: {{ agent.metrics.last_run[:16] }}</span>
+        {% else %}
+        <span class="last-run">No runs yet</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="recent-activity">
+    <h2>Recent Agent Activity</h2>
+    {% if recent_events %}
+    <div class="activity-feed">
+      {% for event in recent_events %}
+      <div class="activity-item">
+        <span class="activity-time">{{ event.created_at[:19] if event.created_at else '' }}</span>
+        <span class="activity-agent">{{ event.agent_id }}</span>
+        <span class="activity-event">{{ event.event_type }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No agent activity recorded yet.</p>
+    {% endif %}
+  </div>
+</main>
+
+<style>
+.container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+.page-header { text-align: center; margin-bottom: 2rem; }
+.page-header h1 { font-size: 2.5rem; color: #00ff41; margin-bottom: 0.5rem; }
+.page-subtitle { color: #888; font-size: 1.1rem; }
+
+.agent-pipeline { display: flex; justify-content: center; gap: 2rem; margin-bottom: 2rem; }
+.pipeline-section h3 { font-size: 0.85rem; letter-spacing: 0.1em; color: #00ff41; }
+.pipeline-arrow { color: #555; font-size: 1.2rem; }
+
+.agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 3rem; }
+.agent-card {
+  background: #111; border: 1px solid #222; border-radius: 8px; padding: 1.25rem;
+  text-decoration: none; color: inherit; transition: border-color 0.2s, transform 0.2s;
+  display: flex; flex-direction: column;
+}
+.agent-card:hover { border-color: #00ff41; transform: translateY(-2px); }
+.agent-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.agent-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff41; }
+.agent-status-dot.active { background: #00ff41; }
+.agent-status-dot.running { background: #f0ad4e; animation: pulse 1s infinite; }
+.agent-status-dot.failed { background: #d9534f; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.agent-category { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 4px; background: #222; }
+.agent-category.discovery { color: #00ff41; }
+.agent-category.intelligence { color: #5b8cff; }
+.agent-category.user { color: #f0ad4e; }
+.agent-category.quality { color: #d9534f; }
+
+.agent-name { font-size: 1rem; margin: 0 0 0.5rem; color: #fff; }
+.agent-desc { font-size: 0.8rem; color: #888; margin: 0 0 1rem; flex-grow: 1; }
+
+.agent-metrics { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
+.metric { display: flex; flex-direction: column; }
+.metric-value { font-size: 1.1rem; font-weight: bold; color: #fff; }
+.metric-label { font-size: 0.65rem; color: #666; text-transform: uppercase; }
+
+.agent-health { display: flex; justify-content: space-between; align-items: center; }
+.health-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
+.health-badge.healthy { background: #0a3d0a; color: #00ff41; }
+.health-badge.degraded { background: #3d3a0a; color: #f0ad4e; }
+.health-badge.failing { background: #3d0a0a; color: #d9534f; }
+.health-badge.offline { background: #222; color: #666; }
+.last-run { font-size: 0.7rem; color: #666; }
+
+.recent-activity { margin-top: 2rem; }
+.recent-activity h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #fff; }
+.activity-feed { display: flex; flex-direction: column; gap: 0.5rem; }
+.activity-item { display: flex; gap: 1rem; padding: 0.5rem; background: #111; border-radius: 4px; font-size: 0.8rem; }
+.activity-time { color: #666; min-width: 140px; }
+.activity-agent { color: #00ff41; min-width: 180px; }
+.activity-event { color: #888; }
+.empty-state { color: #666; text-align: center; padding: 2rem; }
+</style>
+{% endblock %}

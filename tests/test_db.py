@@ -10,6 +10,8 @@ EXPECTED_TABLES = {
     "discovery_runs", "source_health", "filtering_decisions", "raw_responses",
     "chat_messages", "applications", "crawl_jobs", "reports", "opportunities_fts",
     "user_views",
+    "agent_tasks", "agent_events", "agent_metrics",
+    "opportunity_evidence", "opportunity_changes",
 }
 
 SAMPLE_OPP = {
