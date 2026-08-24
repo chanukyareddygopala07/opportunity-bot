@@ -63,10 +63,11 @@ def _profiled_user(username="tooled"):
     return uid
 
 
-def test_tool_registry_rejects_unknown_and_filters_args():
+def test_tool_registry_rejects_unknown_and_filters_args(tmp_db):
     from src.rudra import tools
     out = tools.call_tool("drop_tables; --", 1)
     assert out["error"] == "unknown tool"
+    _seed_opp(title="ML Intern")  # hermetic data, never the host DB
     out = tools.call_tool("search_opportunities", 999999,
                           {"query": "ml", "limit": 500, "evil": "x"})
     result = out["result"]
