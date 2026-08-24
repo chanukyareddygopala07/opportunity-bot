@@ -51,8 +51,8 @@ def sync_sources(sources=None):
                                      priority, trust_score, enabled, check_frequency_hours,
                                      include_patterns, exclude_patterns,
                                      max_pages, result_limit, rate_limit_ms,
-                                     location_filter, role_patterns_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     location_filter, role_patterns_json, adapter)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (url) DO UPDATE SET
                     name = excluded.name,
                     organization = excluded.organization,
@@ -69,7 +69,8 @@ def sync_sources(sources=None):
                     result_limit = excluded.result_limit,
                     rate_limit_ms = excluded.rate_limit_ms,
                     location_filter = excluded.location_filter,
-                    role_patterns_json = excluded.role_patterns_json
+                    role_patterns_json = excluded.role_patterns_json,
+                    adapter = excluded.adapter
                 """,
                 (
                     src.get("name"), src.get("organization"), src.get("type"),
@@ -84,6 +85,7 @@ def sync_sources(sources=None):
                     _int(src.get("rate_limit_ms"), 1500),
                     src.get("location_filter", "india_remote"),
                     json.dumps(src.get("role_patterns", [])),
+                    src.get("adapter"),
                 ),
             )
         conn.commit()

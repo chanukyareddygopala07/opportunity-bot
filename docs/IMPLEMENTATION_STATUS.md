@@ -11,6 +11,15 @@ Live tracker for the production-readiness program defined in
 
 ## COMPLETE
 
+### Hackathon discovery (2026-08-24)
+| Item | Evidence |
+|---|---|
+| Common hackathon source-adapter layer (one interface, per-platform adapters — no independent scrapers) | `src/discovery/hackathon_sources.py` |
+| Live-verified adapters: **Devpost** (public JSON API; dates/prizes/themes/orgs), **MLH** (Inertia page-props JSON, upcomingEvents only), **Internshala** (server-rendered titled links) | live run: 21 opportunities ingested (9 Devpost + 12 Internshala); `tests/test_hackathon_scout.py` with recorded fixtures |
+| 12 further sources (Unstop, SIH, HackerEarth, DoraHacks, lablab, TAIKAI, IBM, SAS, Bhashini, HackIndia, Reskilll, WeMakeDevs) configured **disabled with honest probe reasons** (JS-rendered / auth-gated) — no fake scraping | `config/sources.json` `_note` fields |
+| Never-guarantees hold: missing deadlines stay null (e.g. Internshala cards carry no machine-readable dates); prizes → funding field; themes/team size → requirements; online mode → remote flag | `hackathon_scout.entry_to_opportunity` |
+| Wired into the scheduled pipeline (`worker.run_pipeline`) and Rudra's `search_opportunities` tool surfaces them automatically | worker summary now includes `hackathon_scout` count |
+
 ### Rudra floating assistant + Groq provider (2026-08-24)
 | Item | Evidence |
 |---|---|

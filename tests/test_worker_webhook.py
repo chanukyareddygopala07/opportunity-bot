@@ -34,6 +34,9 @@ class TestWorkerPipeline:
         monkeypatch.setattr(
             "src.discovery.internship_scout.run", fake_internship,
         )
+        monkeypatch.setattr(
+            "src.discovery.hackathon_scout.run", lambda **k: 0
+        )
         monkeypatch.setattr("src.notifications.notifier.run", fake_notifier)
         monkeypatch.setattr("src.ai.assess_new", lambda limit=5: 0)
         monkeypatch.setattr(
@@ -45,6 +48,7 @@ class TestWorkerPipeline:
         expected = {
             "fellowship_scout": 3,
             "internship_scout": 2,
+            "hackathon_scout": 0,
             "notifications": 1,
             "ai_assessments": 0,
             "maintenance": {"expired": 0, "pruned_logs": 0,

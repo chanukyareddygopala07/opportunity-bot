@@ -75,6 +75,7 @@ def _migrate(conn):
         ("last_failure", "TEXT"),
         ("consecutive_failures", "INTEGER DEFAULT 0"),
         ("cooldown_until", "TEXT"),
+        ("adapter", "TEXT"),
     ):
         if column not in existing:
             conn.execute(f"ALTER TABLE sources ADD COLUMN {column} {ddl}")

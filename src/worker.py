@@ -44,7 +44,7 @@ def discovery_summary(limit=200):
 def run_pipeline():
     db.init_db()
     from src import ai, maintenance, queue as crawl_queue, verification
-    from src.discovery import fellowship_scout, internship_scout
+    from src.discovery import fellowship_scout, hackathon_scout, internship_scout
     from src.notifications import notifier
 
     # Full uuid; the 8-char display id is only for humans.
@@ -57,6 +57,8 @@ def run_pipeline():
             category="fellowship", run_id=run_id)
         internship_new = internship_scout.run(
             category="internship", run_id=run_id)
+        hackathon_new = hackathon_scout.run(
+            category="hackathon", run_id=run_id)
         settled = crawl_queue.settle(run_id)
         verified = verification.verify_due(limit=20)
         notified = notifier.run()
@@ -66,6 +68,7 @@ def run_pipeline():
             "run_id": run_id,
             "fellowship_scout": fellowship_new,
             "internship_scout": internship_new,
+            "hackathon_scout": hackathon_new,
             "notifications": notified,
             "ai_assessments": ai_assessed,
             "verification": verified,

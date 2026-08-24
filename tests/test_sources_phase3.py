@@ -87,11 +87,19 @@ class TestSourceConfig:
 
     def test_blocked_sources_not_in_config(self):
         data = json.loads((BASE / "config" / "sources.json").read_text())
-        blocked = {"LinkedIn", "Indeed", "Internshala", "Naukri", "Glassdoor",
+        # Aggregator internship boards stay excluded by policy.
+        # Exception: "Internshala Hackathons" (user-directed hackathon
+        # listing) — matched below on exact name, not substring.
+        blocked = {"LinkedIn", "Indeed", "Naukri", "Glassdoor",
                    "Handshake", "Simplify"}
         names = {s["name"] for s in data["sources"]}
         for name in blocked:
             assert not any(name.lower() in n.lower() for n in names), name
+        assert not any(
+            n.lower() == "internshala" or
+            ("internshala" in n.lower() and "hackathon" not in n.lower())
+            for n in names
+        ), "only the hackathon-specific Internshala source may exist"
 
     def test_curated_links_json(self):
         data = json.loads((BASE / "config" / "curated_links.json").read_text())
