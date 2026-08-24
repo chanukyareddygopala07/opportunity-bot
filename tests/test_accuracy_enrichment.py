@@ -152,7 +152,7 @@ def test_enrichment_handles_unreadable_pages(tmp_db, monkeypatch):
     assert summary["filled"] == 0
 
 
-def test_worker_pipeline_reports_enrichment_summary():
+def test_worker_pipeline_reports_enrichment_summary(tmp_db):
     """run_enrichment returns an honest summary block even when idle."""
     s = enrichment.run_enrichment(limit=1)
     for key in ("candidates", "filled", "confirmed", "conflicts",
