@@ -353,4 +353,6 @@ app = create_app() if FastAPI is not None else None
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("src.api:app", host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT") or os.environ.get("API_PORT") or 8000)
+    uvicorn.run("src.api:app", host="0.0.0.0", port=port)

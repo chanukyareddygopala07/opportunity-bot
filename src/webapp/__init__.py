@@ -74,7 +74,17 @@ def create_app():
     return app
 
 
-def serve(host="0.0.0.0", port=8080):
+def _listen_port(default=8080):
+    """Render/PaaS platforms inject PORT; local dev keeps 8080."""
+    for var in ("PORT", "WEBAPP_PORT"):
+        raw = os.environ.get(var, "").strip()
+        if raw.isdigit():
+            return int(raw)
+    return default
+
+
+def serve(host="0.0.0.0", port=None):
+    port = port or _listen_port()
     app = create_app()
     # Production WSGI server when available (containers / real deployments);
     # falls back to Flask's dev server for bare local runs.

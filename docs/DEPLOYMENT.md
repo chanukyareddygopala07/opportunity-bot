@@ -54,22 +54,34 @@ Token-protected ops: `GET /stats.json`, `POST /run`, `GET /crawl/jobs`.
 
 ## Render (auto-deploy from GitHub)
 
-The repo root Dockerfile is Render-ready (self-contained image; Render builds
-it and routes HTTPS). The push of `main` triggers their pipeline if connected.
+The repository ships a **Render Blueprint** (`render.yaml`) that codifies the
+whole deployment: Docker web service, `/health` health check, 1 GB persistent
+disk at `/app/data` (SQLite), auto-generated `RUN_TOKEN`/`SESSION_SECRET`,
+and placeholder slots for provider keys.
 
-Render service settings:
+Two ways to deploy:
+
+1. **Blueprint (recommended):** Render Dashboard → **New → Blueprint** →
+   select this repository → apply. Fill the `sync: false` values
+   (GROQ_API_KEY etc.) when prompted.
+2. **Existing service:** if a web service is already connected to this repo,
+   every push to `main` redeploys automatically (`autoDeploy: true`).
+
+Post-deploy checklist:
+
+- Set `PUBLIC_BASE_URL=https://<service>.onrender.com` and redeploy once, so
+  canonical/sitemap URLs are correct.
+- Register your account, then set `ADMIN_USERNAME=<your-username>` and
+  redeploy to gain the admin role.
+- Verify `GET /health` returns `{"ok": true}`.
+
+Render service settings (already encoded in render.yaml):
 
 1. **Type:** Web Service → Docker
 2. **Health check path:** `/health`
-3. **Environment variables** (set in the Render dashboard, not committed):
-   - `RUN_TOKEN`, `SESSION_SECRET` (generate fresh values)
-   - `GROQ_API_KEY`, `GROQ_MODEL=openai/gpt-oss-120b`
-   - `PUBLIC_BASE_URL=https://<your-service>.onrender.com`
-   - `COOKIE_SECURE=force` (TLS terminates at Render)
-   - optional: `OPENAI_API_KEY` / `GEMINI_API_KEY` / `OLLAMA_URL`,
-     `TELEGRAM_BOT_TOKEN`, `ADMIN_USERNAME`
-4. **Disk:** attach a persistent disk mounted at `/app/data` — otherwise the
-   SQLite file resets on every deploy.
+3. The app honors Render's injected `$PORT` automatically.
+4. **Disk:** persistent disk mounted at `/app/data` — without it the SQLite
+   file resets on every deploy.
 5. The n8n scheduler is NOT part of a Render web service; either run n8n
    separately or replace it with a Render Cron Job hitting
    `POST https://<service>/run` with header `X-Run-Token: $RUN_TOKEN`.
