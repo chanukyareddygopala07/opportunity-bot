@@ -33,6 +33,7 @@
       <button class="btn btn-primary" id="chat-send" type="submit">Send</button>
     </form>
     <form method="post" action="{{ url_for('rudra_clear') }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
       <button class="btn btn-small" type="submit" style="margin-top: 10px;">Clear chat</button>
     </form>
   </div>
@@ -68,7 +69,10 @@
           const resp = await fetch('{{ url_for("rudra_stream") }}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ message: message }),
+            body: new URLSearchParams({
+              message: message,
+              csrf_token: '{{ csrf_token() }}',
+            }),
             credentials: 'same-origin',
           });
           if (!resp.ok || !resp.body) {

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Flask, g, redirect, request, url_for
 
-from src import db
+from src import db, schema
 from src.envfile import load_dotenv
 from src.notifications import formatting
 from src.webapp import auth, views
@@ -23,6 +23,9 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def create_app():
     db.init_db()
+    # RBAC: the env-named account (if it exists yet) is promoted to admin.
+    # Admin rights come only from the users.role column, never from a name.
+    db.bootstrap_admin(os.environ.get("ADMIN_USERNAME", ""))
     app = Flask(
         __name__,
         template_folder=str(BASE_DIR / "templates"),
@@ -57,6 +60,12 @@ def create_app():
     def lines(value):
         return (value or "").replace("\n", "<br>")
 
+    @app.template_filter("safe_url")
+    def safe_url(value):
+        """Render-time URL scheme allow-list (defense in depth against a
+        poisoned source row that bypassed the write-path check)."""
+        return schema.sanitize_url(value)
+
     @app.template_filter("elig_label")
     def elig_label(status, opp=None):
         return formatting.eligibility_label(status, opp)
@@ -67,7 +76,26 @@ def create_app():
 
 def serve(host="0.0.0.0", port=8080):
     app = create_app()
-    app.run(host=host, port=port, threaded=True)
+    # Production WSGI server when available (containers / real deployments);
+    # falls back to Flask's dev server for bare local runs.
+    if os.environ.get("WEBAPP_DEV_SERVER", "").strip().lower() in ("1", "true"):
+        app.run(host=host, port=port, threaded=True)
+        return
+    try:
+        from waitress import serve as waitress_serve
+    except ImportError:
+        app.logger.warning(
+            "waitress not installed — falling back to the Flask dev server. "
+            "Do NOT use this in production.")
+        app.run(host=host, port=port, threaded=True)
+        return
+    threads = int(os.environ.get("WEBAPP_THREADS", "8"))
+    waitress_serve(
+        app, host=host, port=port, threads=threads,
+        # Behind Render/NGINX-style proxies, trust X-Forwarded-Proto so
+        # COOKIE_SECURE=auto sees HTTPS correctly.
+        url_scheme=os.environ.get("WEBAPP_URL_SCHEME", "http"),
+    )
 
 
 if __name__ == "__main__":

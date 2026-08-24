@@ -182,20 +182,31 @@ def _deadline_expired(opp):
 def _parse_min_gpa(raw):
     """Parse a minimum-GPA value into a 10-point CGPA threshold.
 
-    Accepts '7.5', '7.5 CGPA', '80%'/'80 percent' (converted to 8.0) and
-    4.0-scale values are left as-is; returns None when unparseable.
+    Accepts '7.5', '7.5 CGPA', '80%'/'80 percent' (converted to 8.0).
+    Values on an explicit 4.0 scale ('3.5 GPA', '3.5/4', 'scale of 4')
+    are converted x2.5 so they compare honestly against a 10-point CGPA
+    (a bare 3.5/4 requirement used to be compared raw, producing wrong
+    verdicts). Ambiguous small values without any scale marker are left
+    as-is; returns None when unparseable.
     """
     if raw is None:
         return None
-    text = str(raw).strip()
+    text = str(raw).strip().lower()
     match = re.search(r"(\d+(?:\.\d+)?)", text)
     if not match:
         return None
     value = float(match.group(1))
-    if "%" in text or "percent" in text.lower():
+    if "%" in text or "percent" in text:
         return round(value / 10.0, 2)
     if value > 10:
         return round(value / 10.0, 2)
+    mentions_gpa_scale = (
+        re.search(r"\b(?:gpa|grade\s*point)\b", text)
+        and "cgpa" not in text
+    ) or bool(re.search(r"(?:/\s*4\.?0?|\b4(?:\.0)?\s*(?:point|point scale|scale))", text))
+    if mentions_gpa_scale and value <= 4.0:
+        # 4.0-scale -> 10-point CGPA equivalent.
+        return round(value * 2.5, 2)
     return value
 
 

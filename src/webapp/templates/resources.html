@@ -18,7 +18,7 @@
     <div class="resources-grid">
       {% for item in group['items'] %}
         <div class="card resource-card">
-          <h3><a target="_blank" rel="noopener" href="{{ item.url }}">{{ item.name }} ↗</a></h3>
+          <h3><a target="_blank" rel="noopener" href="{{ item.url | safe_url }}">{{ item.name }} ↗</a></h3>
           {% if item.note %}<p class="muted small">{{ item.note }}</p>{% endif %}
         </div>
       {% endfor %}

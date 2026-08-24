@@ -47,8 +47,10 @@ def _retry_delay_seconds(exc, cap=45):
 
 
 def configured_providers():
-    """Names of AI providers with keys/endpoints configured, e.g. ["gemini"]."""
+    """Names of AI providers with keys/endpoints configured, e.g. ["groq"]."""
     providers = []
+    if os.environ.get("GROQ_API_KEY", "").strip():
+        providers.append("groq")
     if os.environ.get("OPENAI_API_KEY", "").strip():
         providers.append("openai")
     if os.environ.get("GEMINI_API_KEY", "").strip():
@@ -163,6 +165,9 @@ RUDRA_SYSTEM_PROMPT = (
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+# Cloudflare-fronted APIs (e.g. Groq) block Python's default urllib UA.
+API_USER_AGENT = os.environ.get("AI_USER_AGENT", "aawara-opportunity-radar/1.0")
+
 
 def gemini_stream(messages, timeout=180):
     """Stream a Gemini reply token-by-token via the SSE endpoint.
@@ -220,30 +225,110 @@ def gemini_stream(messages, timeout=180):
         return
 
 
-def _openai_chat(messages, timeout=60):
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        return None, None
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+def _openai_style_chat(provider, url, api_key, model, messages,
+                       timeout=60, temperature=0.3):
+    """Shared OpenAI-compatible chat-completions call.
+
+    Used for OpenAI itself and for Groq (https://api.groq.com — same wire
+    format). Returns (reply_text, provider) or (None, None).
+    """
     payload = json.dumps({
         "model": model,
         "messages": messages,
-        "temperature": 0.3,
+        "temperature": temperature,
     }).encode()
     req = urllib.request.Request(
-        OPENAI_CHAT_URL, data=payload, method="POST",
+        url, data=payload, method="POST",
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
+            # Groq sits behind Cloudflare: a browser-ish UA is required or
+            # requests are bot-blocked with HTTP 403 / error 1010.
+            "User-Agent": API_USER_AGENT,
         },
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode())
     except Exception as exc:
-        _log_provider_error("openai", str(exc), exc)
+        _log_provider_error(provider, str(exc), exc)
         return None, None
-    return (body.get("choices") or [{}])[0].get("message", {}).get("content", ""), "openai"
+    return ((body.get("choices") or [{}])[0].get("message", {}) or {}).get(
+        "content", ""), provider
+
+
+def _openai_chat(messages, timeout=60):
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return None, None
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    return _openai_style_chat(
+        "openai", OPENAI_CHAT_URL, api_key, model, messages, timeout)
+
+
+def _groq_base_url():
+    """Groq API base; override with GROQ_BASE_URL to target an
+    OpenAI-compatible endpoint (e.g. xAI's api.x.ai/v1)."""
+    return (os.environ.get("GROQ_BASE_URL",
+                           "https://api.groq.com/openai/v1").rstrip("/"))
+
+
+def _groq_model():
+    return os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+
+
+def _groq_chat(messages, timeout=60):
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return None, None
+    return _openai_style_chat(
+        "groq", f"{_groq_base_url()}/chat/completions",
+        api_key, _groq_model(), messages, timeout)
+
+
+def groq_stream(messages, timeout=120):
+    """Stream Groq replies via the OpenAI-compatible SSE protocol.
+
+    Yields text fragments; stops cleanly on `data: [DONE]`. Errors are
+    logged and the generator ends (callers fall back to other providers).
+    """
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return
+    payload = json.dumps({
+        "model": _groq_model(),
+        "messages": messages,
+        "temperature": 0.3,
+        "stream": True,
+    }).encode()
+    req = urllib.request.Request(
+        f"{_groq_base_url()}/chat/completions", data=payload, method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": API_USER_AGENT,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for raw in resp:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    return
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                delta = ((chunk.get("choices") or [{}])[0].get("delta") or {})
+                text = delta.get("content")
+                if text:
+                    yield text
+    except Exception as exc:
+        _log_provider_error("groq-stream", str(exc), exc)
+        return
 
 
 def _gemini_chat(messages, timeout=60):
@@ -299,15 +384,17 @@ def _gemini_chat(messages, timeout=60):
 
 
 def chat_ask(user_messages, system=None, profile=None):
-    """Rudra: multi-turn chat. Provider order: OpenAI (if OPENAI_API_KEY),
-    then Gemini (if GEMINI_API_KEY), then local Ollama. Returns
-    (reply, provider) or (None, None) when no provider is available."""
+    """Rudra: multi-turn chat.
+
+    Provider order: Groq (if GROQ_API_KEY) → OpenAI (if OPENAI_API_KEY)
+    → Gemini (if GEMINI_API_KEY) → local Ollama.
+    Returns (reply, provider) or (None, None) when no provider is available."""
     system = system or RUDRA_SYSTEM_PROMPT
     context = ""
     if profile:
         context = (
             "STUDENT PROFILE (use for personalization, keep facts locked):\n"
-            + json.dumps(profile, ensure_ascii=False)
+            + json.dumps(safe_profile(profile), ensure_ascii=False)
             + "\n\n"
         )
     messages = [{"role": "system", "content": system}]
@@ -318,6 +405,9 @@ def chat_ask(user_messages, system=None, profile=None):
          "content": str(r.get("content", ""))[:4000]}
         for r in user_messages
     )
+    reply, provider = _groq_chat(messages)
+    if reply:
+        return reply, provider
     reply, provider = _openai_chat(messages)
     if reply:
         return reply, provider
@@ -415,6 +505,27 @@ def _profile_dict():
     from src import store
     profile = store.load_profile() or {}
     return {k: v for k, v in profile.items() if k not in ("chat_id",)}
+
+
+# Fields that may leave the perimeter and enter an LLM prompt. Everything
+# else (password_hash, api_token_hash, email, oauth ids, ...) is stripped —
+# a raw user row must never reach a third-party API.
+PROFILE_PROMPT_FIELDS = (
+    "username", "degree", "degree_level", "branch", "current_year",
+    "graduation_year", "university", "country", "citizenship", "cgpa",
+    "skills", "interests", "preferred", "allow", "eligible_years",
+)
+
+
+def safe_profile(user_or_profile):
+    """Project a user row / profile dict down to LLM-safe personalization fields."""
+    if not isinstance(user_or_profile, dict):
+        return {}
+    return {
+        k: user_or_profile[k]
+        for k in PROFILE_PROMPT_FIELDS
+        if user_or_profile.get(k) not in (None, "", [])
+    }
 
 
 def assess_new(limit=5, profile=None):

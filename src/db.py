@@ -2,11 +2,12 @@
 
 Swap get_connection() for a PostgreSQL driver later; the rest stays.
 """
+import hashlib
 import json
 import os
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src import schema
@@ -24,6 +25,9 @@ OPP_JSON_COLUMNS = (
 
 OPP_BOOL_COLUMNS = ("remote", "hybrid", "saved")
 
+# Default-argument sentinel (distinguishes "not provided" from None).
+_SENTINEL = object()
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -38,7 +42,12 @@ def get_connection():
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    # Concurrency hardening: WAL lets readers work during writes and
+    # busy_timeout makes multi-container access retry instead of erroring
+    # with "database is locked" on first contention.
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -96,6 +105,12 @@ def _migrate(conn):
         ("idx_opp_last_seen",
          "CREATE INDEX IF NOT EXISTS idx_opp_last_seen "
          "ON opportunities(last_seen)"),
+        ("idx_crawl_jobs_status",
+         "CREATE INDEX IF NOT EXISTS idx_crawl_jobs_status "
+         "ON crawl_jobs(status)"),
+        ("idx_discovery_runs_run_id",
+         "CREATE INDEX IF NOT EXISTS idx_discovery_runs_run_id "
+         "ON discovery_runs(run_id)"),
     ):
         if index not in {
             row["name"] for row in conn.execute(
@@ -106,6 +121,9 @@ def _migrate(conn):
     run_columns = {row["name"] for row in conn.execute("PRAGMA table_info(discovery_runs)")}
     if "crawler" not in run_columns:
         conn.execute("ALTER TABLE discovery_runs ADD COLUMN crawler TEXT")
+    session_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sessions)")}
+    if "token_algo" not in session_columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN token_algo TEXT")
     user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
     for column, ddl in (
         ("citizenship", "TEXT"),
@@ -119,6 +137,7 @@ def _migrate(conn):
         ("cgpa", "REAL"),
         ("resume_json", "TEXT"),
         ("api_token_hash", "TEXT"),
+        ("role", "TEXT NOT NULL DEFAULT 'user'"),
     ):
         if column not in user_columns:
             conn.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl}")
@@ -137,18 +156,21 @@ def _migrate(conn):
             "SELECT name FROM sqlite_master WHERE type = 'trigger'"
         )
     }
+    fts_rebuilt = False
     if "opportunities_ai" not in triggers:
         conn.execute(
             "CREATE TRIGGER opportunities_ai AFTER INSERT ON opportunities BEGIN "
             "INSERT INTO opportunities_fts(rowid, title, organization, description, location, country) "
             "VALUES (new.id, new.title, new.organization, new.description, new.location, new.country); END"
         )
+        fts_rebuilt = True
     if "opportunities_ad" not in triggers:
         conn.execute(
             "CREATE TRIGGER opportunities_ad AFTER DELETE ON opportunities BEGIN "
             "INSERT INTO opportunities_fts(opportunities_fts, rowid, title, organization, description, location, country) "
             "VALUES ('delete', old.id, old.title, old.organization, old.description, old.location, old.country); END"
         )
+        fts_rebuilt = True
     if "opportunities_au" not in triggers:
         conn.execute(
             "CREATE TRIGGER opportunities_au AFTER UPDATE ON opportunities BEGIN "
@@ -157,7 +179,11 @@ def _migrate(conn):
             "INSERT INTO opportunities_fts(rowid, title, organization, description, location, country) "
             "VALUES (new.id, new.title, new.organization, new.description, new.location, new.country); END"
         )
-    conn.execute("INSERT INTO opportunities_fts(opportunities_fts) VALUES('rebuild')")
+        fts_rebuilt = True
+    if fts_rebuilt:
+        # Rebuilding on every init costs O(table); only do it when the FTS
+        # wiring itself changed.
+        conn.execute("INSERT INTO opportunities_fts(opportunities_fts) VALUES('rebuild')")
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)"
     )
@@ -221,7 +247,7 @@ def _migrate(conn):
             "CREATE TABLE IF NOT EXISTS chat_messages ("
             "id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) "
             "ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, "
-            "provider TEXT, created_at TEXT)"
+            "provider TEXT, conversation_id TEXT, feedback TEXT, created_at TEXT)"
         )),
         ("user_views", (
             "CREATE TABLE IF NOT EXISTS user_views ("
@@ -325,11 +351,18 @@ def _migrate(conn):
         conn.execute(
             "CREATE TABLE agent_events ("
             "id INTEGER PRIMARY KEY, "
+            "event_id TEXT UNIQUE, "
             "event_type TEXT NOT NULL, "
             "agent_id TEXT NOT NULL, "
             "data TEXT, "
             "created_at TEXT)"
         )
+    event_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(agent_events)")
+    } if "agent_events" in agent_tables else set()
+    if "event_id" not in event_columns and "agent_events" in agent_tables:
+        conn.execute("ALTER TABLE agent_events ADD COLUMN event_id TEXT")
     if "agent_metrics" not in agent_tables:
         conn.execute(
             "CREATE TABLE agent_metrics ("
@@ -384,6 +417,20 @@ def _migrate(conn):
     ):
         if index not in agent_indexes:
             conn.execute(ddl)
+    # Legacy chat_messages upgrades (Rudra conversations + feedback) — must
+    # run after every table-creation step above on fresh databases.
+    final_tables = {
+        row["name"]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    if "chat_messages" in final_tables:
+        chat_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(chat_messages)")
+        }
+        if "conversation_id" not in chat_columns:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN conversation_id TEXT")
+        if "feedback" not in chat_columns:
+            conn.execute("ALTER TABLE chat_messages ADD COLUMN feedback TEXT")
 
 
 def _dumps(value):
@@ -415,6 +462,31 @@ def make_dedup_key(title, organization, application_url, deadline):
 
 # --- opportunities ---
 
+# Fields whose changes are historically tracked (change detection).
+TRACKED_CHANGE_FIELDS = (
+    "deadline", "application_url", "official_url", "eligibility_status",
+    "stipend", "funding", "title", "status", "start_date", "end_date",
+)
+
+
+def _diff_opportunity(old_row, new_opp):
+    """Field-level diff between stored row and incoming normalized data.
+
+    Returns a list of (field, old_value, new_value) tuples for tracked fields
+    where the value actually changed. Never treats missing-as-change.
+    """
+    changes = []
+    for field in TRACKED_CHANGE_FIELDS:
+        old_value = old_row.get(field)
+        new_value = new_opp.get(field)
+        if (old_value or None) == (new_value or None):
+            continue
+        if old_value is None and not new_value:
+            continue
+        changes.append((field, old_value, new_value))
+    return changes
+
+
 def upsert_opportunity(opp):
     opp = schema.normalize_opportunity(opp)
     opp["dedup_key"] = make_dedup_key(
@@ -427,6 +499,9 @@ def upsert_opportunity(opp):
         opp[key] = 1 if opp.get(key) else 0
     if not opp.get("title"):
         raise ValueError("opportunity title is required")
+    errors, _warnings = schema.validate_opportunity(opp)
+    if errors:
+        raise ValueError(f"invalid opportunity: {'; '.join(errors)}")
     ts = now_iso()
     opp["first_seen"] = opp.get("first_seen") or ts
     opp["last_seen"] = ts
@@ -453,12 +528,35 @@ def upsert_opportunity(opp):
     values = [opp.get(c) for c in columns]
     conn = get_connection()
     try:
+        # Change detection: read prior state before the write lands.
+        existing = conn.execute(
+            "SELECT * FROM opportunities WHERE dedup_key = ?",
+            (opp["dedup_key"],),
+        ).fetchone()
         cursor = conn.execute(sql, values)
         conn.commit()
-        if cursor.lastrowid:
-            return cursor.lastrowid
-        row = conn.execute("SELECT id FROM opportunities WHERE dedup_key = ?", (opp["dedup_key"],)).fetchone()
-        return row["id"] if row else None
+        opportunity_id = cursor.lastrowid
+        if not opportunity_id:
+            row = conn.execute(
+                "SELECT id FROM opportunities WHERE dedup_key = ?",
+                (opp["dedup_key"],),
+            ).fetchone()
+            opportunity_id = row["id"] if row else None
+        if existing and opportunity_id:
+            try:
+                for field, old_value, new_value in _diff_opportunity(
+                        dict(existing), opp):
+                    record_opportunity_change(
+                        opportunity_id,
+                        f"{field}_changed",
+                        str(old_value) if old_value is not None else None,
+                        str(new_value) if new_value is not None else None,
+                    )
+            except Exception as exc:  # change log must never block ingestion
+                import logging
+                logging.getLogger(__name__).warning(
+                    "change recording failed: %s", exc)
+        return opportunity_id
     finally:
         conn.close()
 
@@ -652,6 +750,38 @@ def get_user_by_username(username):
         conn.close()
 
 
+def set_user_role(user_id, role):
+    if role not in ("user", "admin"):
+        raise ValueError(f"invalid role: {role!r}")
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE users SET role = ?, updated_at = ? WHERE id = ?",
+            (role, now_iso(), user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def bootstrap_admin(username):
+    """Grant the admin role to the named existing user.
+
+    Returns the affected user id, or None when the username is unset or no
+    such user exists yet (the grant is retried on every startup until it
+    succeeds — registration is the only way accounts are created).
+    """
+    if not username:
+        return None
+    user = get_user_by_username(username)
+    if not user:
+        return None
+    if user.get("role") == "admin":
+        return user["id"]
+    set_user_role(user["id"], "admin")
+    return user["id"]
+
+
 def get_user_by_oauth(provider, provider_id):
     column = "google_id" if provider == "google" else "github_id"
     conn = get_connection()
@@ -740,13 +870,18 @@ def update_user_fields(user_id, fields):
         conn.close()
 
 
+def _session_token_hash(token):
+    """Sessions are stored hashed (SHA-256); a DB read must not yield a live token."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def create_session(user_id, token, expires_at):
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO sessions (user_id, token, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?)",
-            (user_id, token, now_iso(), expires_at),
+            "INSERT INTO sessions (user_id, token, created_at, expires_at, token_algo) "
+            "VALUES (?, ?, ?, ?, 'sha256')",
+            (user_id, _session_token_hash(token), now_iso(), expires_at),
         )
         conn.commit()
     finally:
@@ -754,12 +889,36 @@ def create_session(user_id, token, expires_at):
 
 
 def get_session(token):
+    """Look up a session by its raw bearer token.
+
+    Rows written since hashing was introduced store SHA-256(token). Rows from
+    before the change store the raw token and are matched once, upgraded in
+    place, and never re-stored plaintext. A leaked stored hash must NOT work
+    as a credential, so legacy matching only applies to rows still marked as
+    plaintext.
+    """
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT * FROM sessions WHERE token = ?", (token,)
+            "SELECT * FROM sessions WHERE token = ?",
+            (_session_token_hash(token),),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            # One-time migration of legacy plaintext rows.
+            legacy = conn.execute(
+                "SELECT * FROM sessions WHERE token = ? "
+                "AND (token_algo = 'plain' OR token_algo IS NULL)",
+                (token,),
+            ).fetchone()
+            if not legacy:
+                return None
+            conn.execute(
+                "UPDATE sessions SET token = ?, token_algo = 'sha256' WHERE id = ?",
+                (_session_token_hash(token), legacy["id"]),
+            )
+            conn.commit()
+            return dict(legacy)
+        return dict(row)
     finally:
         conn.close()
 
@@ -767,7 +926,15 @@ def get_session(token):
 def delete_session(token):
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.execute(
+            "DELETE FROM sessions WHERE token = ?", (_session_token_hash(token),)
+        )
+        # Legacy rows may still exist under their raw token.
+        conn.execute(
+            "DELETE FROM sessions WHERE token = ? "
+            "AND (token_algo = 'plain' OR token_algo IS NULL)",
+            (token,),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -1496,6 +1663,56 @@ def retry_crawl_job(job_id):
         conn.close()
 
 
+def expire_stale_crawl_jobs(max_age_hours=6, now=None):
+    """Mark ancient QUEUED jobs FAILED so a crashed run cannot block enqueueing.
+
+    Uses fail_crawl_job semantics so the retry budget is respected.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=max_age_hours)).isoformat()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id FROM crawl_jobs WHERE status = 'QUEUED' AND started_at < ?",
+            (cutoff,),
+        ).fetchall()
+    finally:
+        conn.close()
+    expired = 0
+    for row in rows:
+        fail_crawl_job(row["id"], f"stale job (> {max_age_hours}h queued)")
+        expired += 1
+    return expired
+
+
+def reactivate_retrying_crawl_jobs():
+    """RETRYING jobs from earlier runs get a fresh QUEUED attempt."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE crawl_jobs SET status = 'QUEUED', started_at = ?, "
+            "completed_at = NULL WHERE status = 'RETRYING'",
+            (now_iso(),),
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def list_discovery_runs_for_run(run_id, limit=1000):
+    """All discovery_runs rows recorded under one pipeline run_id."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM discovery_runs WHERE run_id = ? ORDER BY id LIMIT ?",
+            (run_id, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def set_source_enabled(source_id, enabled):
     conn = get_connection()
     try:
@@ -1570,26 +1787,55 @@ def resolve_report(report_id, resolution="accepted"):
 
 # --- Rudra chat ---
 
-def add_chat_message(user_id, role, content, provider=None):
+def add_chat_message(user_id, role, content, provider=None, conversation_id=None):
     conn = get_connection()
     try:
-        conn.execute(
-            "INSERT INTO chat_messages (user_id, role, content, provider, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (user_id, role, content, provider, now_iso()),
+        cursor = conn.execute(
+            "INSERT INTO chat_messages (user_id, role, content, provider, "
+            "conversation_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, role, content, provider, conversation_id, now_iso()),
         )
         conn.commit()
+        return cursor.lastrowid
     finally:
         conn.close()
 
 
-def get_chat_history(user_id, limit=60):
+def get_latest_conversation_id(user_id):
     conn = get_connection()
     try:
+        row = conn.execute(
+            "SELECT conversation_id FROM chat_messages WHERE user_id = ? AND "
+            "conversation_id IS NOT NULL ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        return row["conversation_id"] if row else None
+    finally:
+        conn.close()
+
+
+def get_chat_history(user_id, limit=60, conversation_id=_SENTINEL):
+    """Messages for a conversation (default: the latest one).
+
+    Legacy rows without a conversation id are treated as one implicit
+    conversation so pre-widget history keeps rendering.
+    """
+    conn = get_connection()
+    try:
+        if conversation_id is _SENTINEL or conversation_id is None:
+            row = conn.execute(
+                "SELECT conversation_id FROM chat_messages WHERE user_id = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if not row:
+                return []
+            conversation_id = row["conversation_id"]
         rows = conn.execute(
-            "SELECT id, role, content, provider, created_at FROM chat_messages "
-            "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-            (user_id, limit),
+            "SELECT id, role, content, provider, conversation_id, feedback, created_at "
+            "FROM chat_messages WHERE user_id = ? AND conversation_id IS ? "
+            "ORDER BY id DESC LIMIT ?",
+            (user_id, conversation_id, limit),
         ).fetchall()
         return [dict(r) for r in reversed(rows)]
     finally:
@@ -1601,6 +1847,39 @@ def clear_chat_history(user_id):
     try:
         conn.execute("DELETE FROM chat_messages WHERE user_id = ?", (user_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_conversation(user_id, conversation_id):
+    """Delete ONE conversation's messages (scoped to its owner)."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "DELETE FROM chat_messages WHERE user_id = ? AND conversation_id IS ?",
+            (user_id, conversation_id),
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def set_message_feedback(user_id, message_id, feedback):
+    """Store explicit feedback on the user's OWN assistant message.
+
+    feedback: 'up' | 'down' | None (clears). Returns True when a row changed.
+    """
+    if feedback not in ("up", "down", None):
+        raise ValueError(f"invalid feedback: {feedback!r}")
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE chat_messages SET feedback = ? WHERE id = ? AND user_id = ?",
+            (feedback, message_id, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 

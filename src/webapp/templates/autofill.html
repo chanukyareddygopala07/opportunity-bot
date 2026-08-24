@@ -12,6 +12,7 @@
     <p class="muted">This token lets the extension read your resume from your
       own Aawara instance. Treat it like a password.</p>
     <form method="post" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
       {% if has_token %}
         <span class="tag tag-ok">Token exists — you can regenerate it any time</span>
       {% else %}

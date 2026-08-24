@@ -31,6 +31,7 @@
       <div class="stat"><div class="stat-value">{{ queue.get('FAILED', 0) }}</div><div class="stat-label">jobs failed</div></div>
     </div>
     <form method="post" action="/admin/run" style="margin-top: 18px;">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
       <button class="btn btn-primary" type="submit">▶ Run pipeline now</button>
     </form>
 
@@ -50,6 +51,7 @@
           <td>{{ s.consecutive_failures or 0 }}</td>
           <td>
             <form method="post" action="/admin/sources/{{ s.id }}/toggle" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <input type="hidden" name="enabled" value="{{ 0 if s.enabled else 1 }}">
               <button class="btn btn-small {{ 'btn-primary' if s.enabled else '' }}" type="submit">
                 {{ 'Enabled' if s.enabled else 'Disabled' }}
@@ -77,6 +79,7 @@
           <td>
             {% if j.status in ('FAILED', 'RETRYING') %}
               <form method="post" action="/admin/jobs/{{ j.id }}/retry" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
                 <button class="btn btn-small" type="submit">Retry</button>
               </form>
             {% endif %}
@@ -100,10 +103,12 @@
           <td class="small">{{ r.created_at | short_date }}</td>
           <td>
             <form method="post" action="/admin/reports/{{ r.id }}/resolve" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <input type="hidden" name="resolution" value="accepted">
               <button class="btn btn-small btn-primary" type="submit">Accept + close</button>
             </form>
             <form method="post" action="/admin/reports/{{ r.id }}/resolve" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
               <input type="hidden" name="resolution" value="ignored">
               <button class="btn btn-small" type="submit">Ignore</button>
             </form>

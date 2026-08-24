@@ -8,6 +8,7 @@
 
   {% if notes %}
     <form method="post" action="/notifications" class="toolbar" style="margin-bottom: 14px;">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
       <button class="btn btn-small" type="submit">Mark all as read</button>
     </form>
     <div class="list">

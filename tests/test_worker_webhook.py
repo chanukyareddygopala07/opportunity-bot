@@ -50,10 +50,12 @@ class TestWorkerPipeline:
             "maintenance": {"expired": 0, "pruned_logs": 0,
                             "pruned_errors": 0, "pruned_notifications": 0},
         }
-        assert {k: v for k, v in summary.items() if k not in ("discovery", "crawl_queue", "verification")} == expected
+        assert {k: v for k, v in summary.items() if k not in ("discovery", "crawl_queue", "verification", "run_id")} == expected
+        assert "run_id" in summary
         assert "discovery" in summary
         assert summary["crawl_queue"]["queued"] > 0
-        assert summary["crawl_queue"]["settled"] >= 0
+        settled = summary["crawl_queue"]["settled"]
+        assert settled.get("completed", 0) + settled.get("failed", 0) >= 0
         assert calls == ["fellowship", "internship", "notifier"]
         out = capsys.readouterr().out
         assert json.loads(out) == summary
@@ -123,4 +125,6 @@ class TestWebhook:
         base = self._start(monkeypatch)
         status, body = self._request(base, "POST", "/run", token="secret")
         assert status == 500
-        assert body == {"error": "kaboom"}
+        # Internal error details are never leaked to the caller.
+        assert body == {"error": "pipeline run failed"}
+        assert "kaboom" not in json.dumps(body)

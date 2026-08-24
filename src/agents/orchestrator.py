@@ -31,16 +31,15 @@ class PipelineStage:
         self.depends_on = depends_on or []
 
 
-# The standard opportunity processing pipeline
-PIPELINE = [
-    PipelineStage("discovery_agent"),
-    PipelineStage("crawler_agent", depends_on=["discovery_agent"]),
-    PipelineStage("extraction_agent", depends_on=["crawler_agent"]),
+# Stages that run once per extracted opportunity (after extraction).
+PER_OPPORTUNITY_STAGES = [
     PipelineStage("classification_agent", depends_on=["extraction_agent"]),
     PipelineStage("eligibility_agent", depends_on=["extraction_agent"]),
     PipelineStage("deadline_agent", depends_on=["extraction_agent"]),
     PipelineStage("source_verification_agent", depends_on=["extraction_agent"]),
-    PipelineStage("duplicate_agent", depends_on=["extraction_agent", "classification_agent"]),
+    PipelineStage("duplicate_agent", depends_on=[
+        "extraction_agent", "classification_agent",
+    ]),
     PipelineStage("quality_control_agent", depends_on=[
         "extraction_agent", "classification_agent", "eligibility_agent",
         "deadline_agent", "source_verification_agent", "duplicate_agent",
@@ -50,9 +49,20 @@ PIPELINE = [
     ]),
 ]
 
+# Kept for backwards compatibility with external callers listing PIPELINE.
+PIPELINE = [
+    PipelineStage("discovery_agent"),
+    PipelineStage("crawler_agent", depends_on=["discovery_agent"]),
+    PipelineStage("extraction_agent", depends_on=["crawler_agent"]),
+] + PER_OPPORTUNITY_STAGES
+
 
 class AgentOrchestrator:
     """Central orchestrator for the AAWARA agent system."""
+
+    # Safety cap: how many extracted opportunities a single pipeline run
+    # pushes through the per-opportunity stages.
+    MAX_PIPELINE_OPPORTUNITIES = 50
 
     def __init__(self):
         self._agents: Dict[str, BaseAgent] = {}
@@ -90,20 +100,31 @@ class AgentOrchestrator:
 
     def run_pipeline(self, initial_input: dict,
                      stages: List[PipelineStage] = None) -> dict:
-        """Run the full opportunity processing pipeline.
+        """Run the opportunity processing pipeline.
 
-        Each stage receives the accumulated context from previous stages.
-        Returns a summary with results from each stage.
+        Discovery → crawling → extraction run once. Every extracted
+        opportunity then flows through the per-opportunity stages
+        (classification, eligibility, deadline, verification, dedup, QC,
+        trust). A stage is skipped when its dependencies did not COMPLETE.
+        Returns a summary with per-stage and per-opportunity results.
         """
         stages = stages or PIPELINE
+        per_opp_ids = {s.agent_id for s in PER_OPPORTUNITY_STAGES}
         run_id = str(uuid.uuid4())[:8]
         context = dict(initial_input)
         results = {}
+        opportunities_processed = []
         started_at = datetime.now(timezone.utc).isoformat()
 
+        def _stage_succeeded(agent_id):
+            r = results.get(agent_id)
+            return isinstance(r, dict) and r.get("status") == AgentStatus.COMPLETED.value
+
+        # Phase 1: shared stages (discovery, crawler, extraction).
         for stage in stages:
-            # Check dependencies
-            deps_met = all(dep in results for dep in stage.depends_on)
+            if stage.agent_id in per_opp_ids:
+                continue
+            deps_met = all(_stage_succeeded(dep) for dep in stage.depends_on)
             if not deps_met:
                 logger.warning(
                     "Skipping %s: dependencies not met (%s)",
@@ -114,19 +135,58 @@ class AgentOrchestrator:
                     "reason": "dependencies_not_met",
                 }
                 continue
-
-            # Prepare input from context
             agent_input = self._prepare_input(stage.agent_id, context)
-
-            # Run the agent
             result = self.run_agent(stage.agent_id, agent_input)
             results[stage.agent_id] = result.to_dict()
-
-            # Update context with results
             if result.status == AgentStatus.COMPLETED and result.data:
                 context[f"{stage.agent_id}_result"] = result.data
 
+        # Phase 2: per-opportunity stages.
+        extraction_result = context.get("extraction_agent_result") or {}
+        candidates = extraction_result.get("opportunities") or []
+
+        def _run_per_opportunity(opp):
+            opp_context = {
+                "extraction_agent_result": {"opportunities": [opp], "total": 1},
+            }
+            opp_results = {}
+            for stage in PER_OPPORTUNITY_STAGES:
+                deps_met = all(
+                    dep == "extraction_agent"
+                    or (opp_results.get(dep, {}).get("status")
+                        == AgentStatus.COMPLETED.value)
+                    for dep in stage.depends_on
+                )
+                if not deps_met:
+                    opp_results[stage.agent_id] = {
+                        "status": "skipped",
+                        "reason": "dependencies_not_met",
+                    }
+                    continue
+                agent_input = self._prepare_input(stage.agent_id, {
+                    **context,
+                    **opp_context,
+                })
+                result = self.run_agent(stage.agent_id, agent_input)
+                opp_results[stage.agent_id] = result.to_dict()
+                if result.status == AgentStatus.COMPLETED and result.data:
+                    opp_context[f"{stage.agent_id}_result"] = result.data
+            return opp_results
+
+        for opp in candidates[: self.MAX_PIPELINE_OPPORTUNITIES]:
+            if not isinstance(opp, dict) or not opp.get("title"):
+                continue
+            opportunities_processed.append({
+                "title": opp.get("title"),
+                "stages": _run_per_opportunity(opp),
+            })
+
         finished_at = datetime.now(timezone.utc).isoformat()
+
+        results["_pipeline"] = {
+            "opportunities_seen": len(candidates),
+            "opportunities_processed": len(opportunities_processed),
+        }
 
         # Record pipeline run
         try:
@@ -141,11 +201,13 @@ class AgentOrchestrator:
                         "orchestrator",
                         json.dumps({
                             "run_id": run_id,
-                            "stages": len(results),
-                            "results": {
-                                k: v.get("status", "unknown")
+                            "shared_stages": {
+                                k: (v.get("status", "unknown") if isinstance(v, dict) else v)
                                 for k, v in results.items()
+                                if k != "_pipeline"
                             },
+                            "opportunities_seen": len(candidates),
+                            "opportunities_processed": len(opportunities_processed),
                         }),
                         finished_at,
                     ),
@@ -160,11 +222,29 @@ class AgentOrchestrator:
             "run_id": run_id,
             "started_at": started_at,
             "finished_at": finished_at,
-            "stages": results,
+            "shared_stages": {
+                k: v for k, v in results.items() if k not in ("_pipeline",)
+            },
+            "opportunities": opportunities_processed,
+            "totals": results["_pipeline"],
         }
 
     def _prepare_input(self, agent_id: str, context: dict) -> dict:
-        """Prepare input for a specific agent based on context."""
+        """Prepare input for a specific agent based on context.
+
+        Extraction emits {"opportunities": [...]} — downstream per-opportunity
+        stages always receive exactly ONE opportunity dict (the contract every
+        downstream agent expects).
+        """
+        def _single_opportunity():
+            extraction = context.get("extraction_agent_result") or {}
+            opps = extraction.get("opportunities") or []
+            if len(opps) == 1:
+                return opps[0]
+            if "opportunity" in extraction:
+                return extraction["opportunity"]
+            return extraction if extraction else None
+
         if agent_id == "discovery_agent":
             return context
         if agent_id == "crawler_agent":
@@ -177,21 +257,22 @@ class AgentOrchestrator:
                 "pages": context.get("crawler_agent_result", {}).get("pages", []),
                 **context,
             }
+        opportunity = _single_opportunity()
         if agent_id in ("classification_agent", "eligibility_agent",
                         "deadline_agent", "source_verification_agent"):
             return {
-                "opportunity": context.get("extraction_agent_result", {}),
+                "opportunity": opportunity,
                 **context,
             }
         if agent_id == "duplicate_agent":
             return {
-                "opportunity": context.get("extraction_agent_result", {}),
+                "opportunity": opportunity,
                 "classification": context.get("classification_agent_result", {}),
                 **context,
             }
         if agent_id == "quality_control_agent":
             return {
-                "opportunity": context.get("extraction_agent_result", {}),
+                "opportunity": opportunity,
                 "classification": context.get("classification_agent_result", {}),
                 "eligibility": context.get("eligibility_agent_result", {}),
                 "deadline": context.get("deadline_agent_result", {}),
@@ -201,7 +282,7 @@ class AgentOrchestrator:
             }
         if agent_id == "trust_score_agent":
             return {
-                "opportunity": context.get("extraction_agent_result", {}),
+                "opportunity": opportunity,
                 "verification": context.get("source_verification_agent_result", {}),
                 "qc": context.get("quality_control_agent_result", {}),
                 **context,

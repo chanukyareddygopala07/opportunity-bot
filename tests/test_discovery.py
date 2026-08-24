@@ -83,8 +83,15 @@ def test_source_sync_and_list(tmp_db):
 
 
 def test_scout_end_to_end_against_fixtures(tmp_db, tmp_path, monkeypatch):
-    rss_uri = (FIXTURES / "sample_feed.xml").as_uri()
-    news_uri = (FIXTURES / "sample_news.html").as_uri()
+    # Storage only accepts http(s), so serve fixtures under a fake https host.
+    rss_uri = "https://fixtures.local/sample_feed.xml"
+    news_uri = "https://fixtures.local/sample_news.html"
+
+    def fake_fetch(url, **kwargs):
+        name = url.rsplit("/", 1)[-1]
+        return ((FIXTURES / name).read_text(), url, 200)
+
+    monkeypatch.setattr("src.discovery.fetcher.fetch", fake_fetch)
     config = {"sources": [
         {
             "name": "Fixture RSS", "organization": "Example Univ", "type": "official_university",
@@ -116,6 +123,9 @@ def test_scout_end_to_end_against_fixtures(tmp_db, tmp_path, monkeypatch):
         return b"ok", url, 200
 
     monkeypatch.setattr(verify_fetcher, "fetch_bytes", fake_fetch_bytes)
+    # Stub the live check: stored URLs are https and must not be fetched.
+    monkeypatch.setattr(
+        "src.verification.check_link", lambda url: ("live", "link responds"))
     from src.discovery import fellowship_scout
 
     count = fellowship_scout.run(category="fellowship", sources_file=str(sources_file))

@@ -1,0 +1,87 @@
+{# Rudra floating assistant — decoupled widget shell.
+   All behavior lives in /static/rudra-widget.js; styling in
+   /static/rudra-widget.css. The server injects only minimum config. #}
+<div id="rudra-widget" class="rw-root" data-rudra-config='{{ {
+  "chatUrl": url_for("rudra_api_chat"),
+  "newChatUrl": url_for("rudra_api_new_chat"),
+  "clearUrl": url_for("rudra_api_clear"),
+  "feedbackUrl": url_for("rudra_api_feedback"),
+  "suggestionsUrl": url_for("rudra_api_suggestions"),
+  "fullPageUrl": url_for("rudra"),
+  "page": g.get("rudra_page", request.endpoint or ""),
+  "opportunityId": request.view_args.get("opportunity_id") if request.view_args and "opportunity_id" in request.view_args else none
+} | tojson | e }}'>
+
+  <button type="button" id="rw-launcher" class="rw-launcher"
+          aria-expanded="false" aria-controls="rw-panel"
+          aria-label="Open Rudra, AI Career Assistant chat">
+    <span class="rw-orb" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round"
+           stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3l1.9 5.4L19 10l-5.1 1.6L12 17l-1.9-5.4L5 10l5.1-1.6z"/>
+        <circle cx="18.5" cy="5.5" r="1"/>
+      </svg>
+    </span>
+    <span class="rw-launcher-copy">
+      <span class="rw-launcher-name">Rudra</span>
+      <span class="rw-launcher-sub">AI Career Assistant</span>
+    </span>
+    <span class="rw-orb-pulse" aria-hidden="true"></span>
+  </button>
+
+  <section id="rw-panel" class="rw-panel" role="dialog"
+           aria-modal="false" aria-labelledby="rw-title" hidden>
+    <header class="rw-header">
+      <span class="rw-avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round"><path d="M12 3l1.9 5.4L19 10l-5.1 1.6L12 17l-1.9-5.4L5 10l5.1-1.6z"/></svg>
+      </span>
+      <div class="rw-header-copy">
+        <h2 id="rw-title">Rudra</h2>
+        <p class="rw-status" id="rw-status" role="status">AI Career Assistant · advisory only</p>
+      </div>
+      <div class="rw-header-actions">
+        <button type="button" id="rw-new-chat" class="rw-icon-btn"
+                title="New conversation" aria-label="Start a new conversation">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <a href="{{ url_for('rudra') }}" class="rw-icon-btn" title="Open full page"
+           aria-label="Open the full-page Rudra chat">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 4h6v6M20 4l-8 8M18 13v6a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h6"/>
+          </svg>
+        </a>
+        <button type="button" id="rw-minimize" class="rw-icon-btn"
+                title="Minimize" aria-label="Minimize Rudra chat">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 12h14"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="rw-messages" id="rw-messages" role="log" aria-live="polite" aria-relevant="additions text"></div>
+    <script type="application/json" id="rw-history">{{ rudra_history() | tojson | e }}</script>
+
+    <div class="rw-suggestions" id="rw-suggestions" hidden></div>
+
+    <form class="rw-composer" id="rw-composer">
+      <label class="rw-sr-only" for="rw-input">Message Rudra</label>
+      <textarea id="rw-input" name="message" rows="1" maxlength="4000"
+                placeholder="Ask about eligibility, deadlines, prep…"
+                autocomplete="off"></textarea>
+      <button type="submit" id="rw-send" class="rw-send" aria-label="Send message">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
+      </button>
+    </form>
+    <p class="rw-footer-note">Advisory only — always verify on official sites.</p>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='rudra-widget.js') }}" defer></script>

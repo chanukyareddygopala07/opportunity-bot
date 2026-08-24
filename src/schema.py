@@ -104,6 +104,33 @@ def _coerce_bool(value):
     return False
 
 
+# Crawled web content is untrusted: URLs are only allowed to use schemes that
+# can be safely rendered and fetched. javascript:/data:/vbscript: etc. from a
+# poisoned source must never reach an href.
+ALLOWED_URL_SCHEMES = ("http", "https")
+URL_FIELDS = ("application_url", "official_url", "source_url")
+
+
+def sanitize_url(value):
+    """Return the URL if it has a safe absolute scheme, else None."""
+    if value is None:
+        return None
+    url = str(value).strip()
+    if not url:
+        return None
+    lowered = url.lower()
+    for scheme in ALLOWED_URL_SCHEMES:
+        if lowered.startswith(scheme + "://"):
+            # Reject control characters that could confuse browsers/parsers.
+            if any(ord(ch) < 0x20 for ch in url):
+                return None
+            return url
+    if lowered.startswith("//"):
+        # Protocol-relative URLs inherit http(s) — keep but normalize to https.
+        return "https:" + url
+    return None
+
+
 def normalize_opportunity(raw):
     raw = dict(raw or {})
     opp = {}
@@ -111,6 +138,10 @@ def normalize_opportunity(raw):
     for field in TEXT_FIELDS:
         value = raw.get(field)
         opp[field] = str(value).strip() if value is not None and str(value).strip() else None
+
+    # Untrusted crawled URLs: scheme allow-list at the boundary.
+    for field in URL_FIELDS:
+        opp[field] = sanitize_url(opp.get(field))
 
     for field in LIST_FIELDS:
         value = raw.get(field)

@@ -1,7 +1,9 @@
 """Web app routes: pages for browsing, auth, profile, stats, pipeline trigger."""
+import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import time
 
@@ -66,13 +68,35 @@ def _safe_next(value):
 
 def _admin_required(view):
     def wrapped(*args, **kwargs):
-        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
-        if not g.user or g.user.get("username") != admin_username:
+        if not g.user or g.user.get("role") != "admin":
             return redirect(url_for("login", next=request.path))
         return view(*args, **kwargs)
 
     wrapped.__name__ = view.__name__
     return wrapped
+
+
+def _public_base_url():
+    """Canonical public origin: PUBLIC_BASE_URL env when set (recommended in
+    production), else the request's own root. Host headers are untrusted."""
+    configured = (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if configured:
+        return configured
+    return request.url_root.rstrip("/")
+
+
+def _cookie_secure(request):
+    """Secure flag policy: COOKIE_SECURE=force|never|auto (default).
+
+    auto enables Secure whenever the request arrived over HTTPS (directly or
+    via a proxy's X-Forwarded-Proto), so plain-HTTP localhost keeps working.
+    """
+    mode = os.environ.get("COOKIE_SECURE", "auto").strip().lower()
+    if mode == "force":
+        return True
+    if mode == "never":
+        return False
+    return request.is_secure or request.headers.get("X-Forwarded-Proto") == "https"
 
 
 def _set_session_cookie(response, token):
@@ -82,6 +106,7 @@ def _set_session_cookie(response, token):
         max_age=auth.SESSION_DAYS * 24 * 3600,
         httponly=True,
         samesite="Lax",
+        secure=_cookie_secure(request),
     )
     return response
 
@@ -90,18 +115,91 @@ _AUTH_ATTEMPTS = {}
 _AUTH_MAX_ATTEMPTS = 10
 _AUTH_WINDOW_SECONDS = 600
 
+# Rudra chat throttling (per user+IP).
+_RUDRA_ATTEMPTS = {}
+_RUDRA_MAX_MESSAGES = 20
+_RUDRA_WINDOW_SECONDS = 600
+
+_RUDRA_FLAG_CACHE = {"value": None}
+
+
+def _rudra_widget_enabled():
+    """Feature flag: RUDRA_WIDGET_ENABLED=true|false|auto (default auto).
+
+    auto keeps the widget available whenever any AI provider could answer;
+    providers are checked cheaply (env keys / Ollama URL configured) without
+    network pings in the page-render path.
+    """
+    if _RUDRA_FLAG_CACHE["value"] is None:
+        raw = os.environ.get("RUDRA_WIDGET_ENABLED", "auto").strip().lower()
+        if raw == "false":
+            _RUDRA_FLAG_CACHE["value"] = False
+        elif raw == "true":
+            _RUDRA_FLAG_CACHE["value"] = True
+        else:  # auto
+            has_provider = bool(
+                os.environ.get("GROQ_API_KEY", "").strip()
+                or os.environ.get("OPENAI_API_KEY", "").strip()
+                or os.environ.get("GEMINI_API_KEY", "").strip()
+                or os.environ.get("OLLAMA_URL", "").strip()
+                or ai.DEFAULT_URL
+            )
+            _RUDRA_FLAG_CACHE["value"] = has_provider
+    return _RUDRA_FLAG_CACHE["value"]
+
+
+def _rudra_history():
+    """Latest conversation's messages for widget hydration (whitelisted fields)."""
+    try:
+        rows = db.get_chat_history(g.user["id"], limit=30)
+    except Exception:
+        return []
+    return [
+        {"role": r.get("role"), "content": (r.get("content") or "")[:2000],
+         "conversation_id": r.get("conversation_id")}
+        for r in rows
+        if r.get("role") in ("user", "assistant")
+    ]
+
+
+def _login_required_json(view):
+    def wrapped(*args, **kwargs):
+        if not g.user:
+            return jsonify({"error": "authentication required"}), 401
+        return view(*args, **kwargs)
+
+    wrapped.__name__ = view.__name__
+    return wrapped
+
+# Anonymous abuse-report throttling (per IP).
+_REPORT_ATTEMPTS = {}
+_REPORT_MAX = 5
+_REPORT_WINDOW_SECONDS = 3600
+
+
+def _throttled(store_, key, max_attempts, window_seconds):
+    now = time.time()
+    window = [t for t in store_.get(key, []) if now - t < window_seconds]
+    store_[key] = window
+    return len(window) >= max_attempts
+
+
+def _note_attempt(store_, key):
+    store_.setdefault(key, []).append(time.time())
+
 
 def _auth_is_blocked():
     key = request.remote_addr or "unknown"
-    now = time.time()
-    window = [t for t in _AUTH_ATTEMPTS.get(key, []) if now - t < _AUTH_WINDOW_SECONDS]
-    _AUTH_ATTEMPTS[key] = window
-    return len(window) >= _AUTH_MAX_ATTEMPTS
+    return _throttled(_AUTH_ATTEMPTS, key, _AUTH_MAX_ATTEMPTS, _AUTH_WINDOW_SECONDS)
 
 
 def _auth_note_failure():
+    _note_attempt(_AUTH_ATTEMPTS, request.remote_addr or "unknown")
+
+
+def _report_is_blocked():
     key = request.remote_addr or "unknown"
-    _AUTH_ATTEMPTS.setdefault(key, []).append(time.time())
+    return _throttled(_REPORT_ATTEMPTS, key, _REPORT_MAX, _REPORT_WINDOW_SECONDS)
 
 
 def _auth_provider_configured(provider):
@@ -112,19 +210,102 @@ def _auth_provider_configured(provider):
     return False
 
 
+# Names that can never be registered; admin rights come exclusively from the
+# users.role column, which only db.bootstrap_admin (env-configured) grants.
+RESERVED_USERNAMES = frozenset({
+    "admin", "administrator", "root", "support", "moderator", "mod",
+    "staff", "official", "aawara", "security", "system",
+})
+
+ANON_CSRF_COOKIE = "opp_csrf"
+
+
+def _secret_key_bytes():
+    try:
+        from flask import current_app
+        key = current_app.config.get("SECRET_KEY")
+    except RuntimeError:
+        key = None
+    if not key:
+        key = os.environ.get("SESSION_SECRET", "dev-only")
+    return str(key).encode()
+
+
+def csrf_token_for(base_value):
+    """Stateless CSRF token: HMAC(secret, context string). Rotates with sessions."""
+    if not base_value:
+        return ""
+    return hmac.new(
+        _secret_key_bytes(), ("csrf:" + base_value).encode(), hashlib.sha256,
+    ).hexdigest()
+
+
+def csrf_token():
+    """Jinja helper: the CSRF token for the current visitor (session-bound,
+    falling back to the anonymous pairing cookie)."""
+    session_tok = request.cookies.get(auth.SESSION_COOKIE)
+    if session_tok:
+        return csrf_token_for("session:" + session_tok)
+    anon = request.cookies.get(ANON_CSRF_COOKIE)
+    if anon:
+        return csrf_token_for("anon:" + anon)
+    return ""
+
+
+def _csrf_ok():
+    """Validate the CSRF token supplied with this POST (form field or header)."""
+    expected = csrf_token()
+    if not expected:
+        return True  # nothing to pair against yet (see docs/SECURITY.md)
+    supplied = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token") or ""
+    return bool(supplied) and hmac.compare_digest(expected, supplied)
+
+
 def register_routes(app):
+
+    @app.context_processor
+    def _inject_csrf():
+        return {
+            "csrf_token": csrf_token,
+            "base_url": _public_base_url,
+            "rudra_widget_enabled": _rudra_widget_enabled,
+            "rudra_history": _rudra_history,
+        }
+
+    @app.after_request
+    def ensure_anon_csrf_cookie(response):
+        # Give anonymous visitors a pairing cookie so login/register forms
+        # can carry a double-submit CSRF token.
+        if (request.method == "GET" and not request.cookies.get(ANON_CSRF_COOKIE)
+                and response.status_code < 400
+                and "text/html" in (response.content_type or "")):
+            response.set_cookie(
+                ANON_CSRF_COOKIE,
+                secrets.token_urlsafe(24),
+                httponly=True,
+                samesite="Lax",
+                secure=_cookie_secure(request),
+            )
+        return response
 
     @app.before_request
     def guard_cross_origin_posts():
         if request.method != "POST":
             return None
-        origin = request.headers.get("Origin")
-        if not origin:
+        # Machine-authenticated pipeline triggers are exempt from browser CSRF.
+        if webhook._authorized(request.headers):
             return None
-        host = request.host
-        origin_host = origin.split("://", 1)[-1].split("/", 1)[0]
-        if origin_host != host:
-            abort(403)
+        origin = request.headers.get("Origin")
+        if origin:
+            host = request.host
+            origin_host = origin.split("://", 1)[-1].split("/", 1)[0]
+            if origin_host != host:
+                abort(403)
+        # CSRF: authenticated requests pair against the session; anonymous
+        # ones against the double-submit cookie. No cookie yet -> nothing to
+        # pair, first contact is still guarded by Origin checks + rate limits.
+        if not _csrf_ok():
+            abort(400)
         return None
 
     @app.route("/")
@@ -359,6 +540,8 @@ def register_routes(app):
         reason = (request.form.get("reason") or "").strip()
         if not reason:
             abort(400)
+        if _report_is_blocked():
+            abort(429)
         notes = (request.form.get("notes") or "").strip() or None
         db.add_report(
             opportunity_id,
@@ -366,6 +549,7 @@ def register_routes(app):
             reason,
             notes,
         )
+        _note_attempt(_REPORT_ATTEMPTS, request.remote_addr or "unknown")
         return redirect(request.referrer or url_for("detail", opportunity_id=opportunity_id))
 
     @app.route("/o/<int:opportunity_id>/save", methods=["POST"])
@@ -458,7 +642,7 @@ def register_routes(app):
 
     @app.route("/robots.txt")
     def robots():
-        base = request.url_root.rstrip("/")
+        base = _public_base_url()
         body = (
             "User-agent: *\n"
             "Allow: /\n"
@@ -466,32 +650,40 @@ def register_routes(app):
         )
         return (body, 200, {"Content-Type": "text/plain; charset=utf-8"})
 
+    def _xml_escape(value):
+        return (str(value).replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace('"', "&quot;"))
+
     @app.route("/sitemap.xml")
     def sitemap():
-        base = request.url_root.rstrip("/")
+        # Pin the base URL to the configured origin when provided: host
+        # headers are client-controlled and can poison generated URLs.
+        base = _public_base_url()
         static_urls = [
-            (base + url_for("index"), "1.0", "daily"),
-            (base + url_for("opportunities_list"), "0.9", "daily"),
-            (base + "/internships", "0.8", "daily"),
-            (base + "/fellowships", "0.8", "daily"),
-            (base + url_for("top"), "0.6", "weekly"),
-            (base + url_for("urgent"), "0.6", "daily"),
-            (base + url_for("resources"), "0.5", "weekly"),
+            (url_for("index"), "1.0", "daily"),
+            (url_for("opportunities_list"), "0.9", "daily"),
+            ("/internships", "0.8", "daily"),
+            ("/fellowships", "0.8", "daily"),
+            (url_for("top"), "0.6", "weekly"),
+            (url_for("urgent"), "0.6", "daily"),
+            (url_for("resources"), "0.5", "weekly"),
         ]
         entries = []
-        for loc, priority, freq in static_urls:
+        for path, priority, freq in static_urls:
             entries.append(
-                f"  <url><loc>{loc}</loc><priority>{priority}</priority>"
+                f"  <url><loc>{_xml_escape(base + path)}</loc>"
+                f"<priority>{priority}</priority>"
                 f"<changefreq>{freq}</changefreq></url>"
             )
         for opp in db.list_opportunities():
             if not deadlines.is_active(opp):
                 continue
-            loc = url_for("detail", opportunity_id=opp["id"], _external=True)
+            loc = base + url_for("detail", opportunity_id=opp["id"])
             lastmod = (opp.get("last_seen") or opp.get("first_seen") or "")[:10]
+            lastmod = lastmod if re.match(r"^\d{4}-\d{2}-\d{2}$", lastmod) else ""
             entries.append(
-                f"  <url><loc>{loc}</loc>"
-                f"<lastmod>{lastmod}</lastmod>"
+                f"  <url><loc>{_xml_escape(loc)}</loc>"
+                f"<lastmod>{_xml_escape(lastmod)}</lastmod>"
                 f"<priority>0.7</priority></url>"
             )
         body = (
@@ -742,6 +934,9 @@ def register_routes(app):
             if len(username) < 3:
                 error = "Username must be at least 3 characters."
                 _auth_note_failure()
+            elif username.lower() in RESERVED_USERNAMES:
+                error = "That username is reserved."
+                _auth_note_failure()
             elif len(password) < 8:
                 error = "Password must be at least 8 characters."
                 _auth_note_failure()
@@ -810,7 +1005,13 @@ def register_routes(app):
                       f"server yet ({exc}). Use email login instead, or ask "
                       f"the site owner to add the provider keys.",
             ), 200
-        response.set_cookie(oauth.STATE_COOKIE, state, httponly=True, samesite="Lax")
+        response.set_cookie(
+            oauth.STATE_COOKIE, state,
+            httponly=True,
+            samesite="Lax",
+            max_age=600,
+            secure=_cookie_secure(request),
+        )
         return response
 
     @app.route("/auth/<provider>/callback")
@@ -852,7 +1053,7 @@ def register_routes(app):
         history = db.get_chat_history(g.user["id"], limit=20)
         reply, provider = ai.chat_ask(
             [{"role": r["role"], "content": r["content"]} for r in history],
-            profile=g.user,
+            profile=ai.safe_profile(g.user),
         )
         if reply:
             db.add_chat_message(g.user["id"], "assistant", reply[:4000], provider)
@@ -880,7 +1081,7 @@ def register_routes(app):
         db.add_chat_message(g.user["id"], "user", message[:4000])
         history = db.get_chat_history(g.user["id"], limit=12)
         user_id = g.user["id"]
-        profile = {k: v for k, v in g.user.items() if k not in ("password_hash", "api_token_hash")}
+        profile = ai.safe_profile(g.user)
         messages = (
             [{"role": "system", "content": ai.RUDRA_SYSTEM_PROMPT}]
             + [{"role": "system", "content": "STUDENT PROFILE (use for personalization, keep facts locked):\n" + json.dumps(profile, ensure_ascii=False)}]
@@ -918,6 +1119,126 @@ def register_routes(app):
         db.clear_chat_history(g.user["id"])
         return redirect(url_for("rudra"))
 
+    # --- Rudra floating widget API (authenticated JSON / SSE) ---
+
+    @app.route("/rudra/api/chat", methods=["POST"])
+    @_login_required_json
+    def rudra_api_chat():
+        payload = request.get_json(silent=True) or {}
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return jsonify({"error": "empty message"}), 400
+        key = f"{g.user['id']}:{request.remote_addr or 'unknown'}"
+        if _throttled(_RUDRA_ATTEMPTS, key, _RUDRA_MAX_MESSAGES,
+                      _RUDRA_WINDOW_SECONDS):
+            return jsonify({"error": "Too many messages — please wait a moment."}), 429
+        _note_attempt(_RUDRA_ATTEMPTS, key)
+
+        from src.rudra import orchestrator as rudra_orchestrator
+        hint = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        conversation_id = payload.get("conversation_id") or None
+        try:
+            turn = rudra_orchestrator.prepare_turn(
+                g.user, message[:4000], hint, conversation_id)
+        except Exception:
+            app.logger.exception("rudra turn preparation failed")
+            return jsonify({"error": "Could not start the chat turn. Try again."}), 500
+
+        if payload.get("stream") is False:
+            try:
+                reply, provider = rudra_orchestrator.complete_reply(turn, g.user)
+            except Exception:
+                app.logger.exception("rudra reply failed")
+                reply, provider = None, None
+            if not reply:
+                return jsonify({"error": "Rudra is offline right now — try again shortly."}), 503
+            return jsonify({
+                "reply": reply[:4000],
+                "provider": provider,
+                "conversation_id": turn["conversation_id"],
+                "tools_used": turn["tools_used"],
+                "sources": rudra_orchestrator._sources_for(turn),
+            })
+
+        # Bind everything the generator needs BEFORE streaming starts:
+        # request/app-local proxies are not available mid-stream.
+        user = g.user
+        conversation_id_out = turn["conversation_id"]
+        tools_used = turn["tools_used"]
+
+        def generate():
+            try:
+                yield "data: %s\n\n" % json.dumps({
+                    "type": "start",
+                    "conversation_id": conversation_id_out,
+                    "tools_used": tools_used,
+                }, ensure_ascii=False)
+                for event in rudra_orchestrator.stream_reply(turn, user):
+                    yield "data: %s\n\n" % json.dumps(event, ensure_ascii=False)
+            except Exception:
+                # A crashed generator must still tell the client something.
+                app.logger.exception("rudra stream crashed")
+                yield "data: %s\n\n" % json.dumps(
+                    {"type": "error", "error": "Unexpected error — please retry."})
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache",
+                     "X-Accel-Buffering": "no"},
+        )
+
+    @app.route("/rudra/api/new-chat", methods=["POST"])
+    @_login_required_json
+    def rudra_api_new_chat():
+        import uuid as _uuid
+        conversation_id = _uuid.uuid4().hex[:16]
+        return jsonify({"conversation_id": conversation_id, "messages": []})
+
+    @app.route("/rudra/api/clear", methods=["POST"])
+    @_login_required_json
+    def rudra_api_clear():
+        payload = request.get_json(silent=True) or {}
+        conversation_id = payload.get("conversation_id")
+        deleted = None
+        if conversation_id:
+            deleted = db.delete_conversation(g.user["id"], conversation_id)
+            remaining = db.get_chat_history(g.user["id"], limit=1)
+            new_conversation_id = (remaining[0].get("conversation_id")
+                                   if remaining else None)
+        else:
+            db.clear_chat_history(g.user["id"])
+            new_conversation_id = None
+        return jsonify({"ok": True, "deleted": deleted,
+                        "conversation_id": new_conversation_id})
+
+    @app.route("/rudra/api/feedback", methods=["POST"])
+    @_login_required_json
+    def rudra_api_feedback():
+        payload = request.get_json(silent=True) or {}
+        feedback = payload.get("feedback")
+        if feedback not in ("up", "down", None):
+            return jsonify({"error": "feedback must be up|down|null"}), 400
+        changed = db.set_message_feedback(
+            g.user["id"], payload.get("message_id"), feedback)
+        if not changed:
+            return jsonify({"error": "message not found"}), 404
+        return jsonify({"ok": True})
+
+    @app.route("/rudra/api/suggestions")
+    @_login_required_json
+    def rudra_api_suggestions():
+        if os.environ.get("RUDRA_SUGGESTIONS_ENABLED", "true").strip().lower() \
+                in ("0", "false"):
+            return jsonify({"suggestions": []})
+        from src.rudra.context import build_suggestions
+        try:
+            suggestions = build_suggestions(g.user)
+        except Exception:
+            app.logger.exception("rudra suggestion build failed")
+            suggestions = []
+        return jsonify({"suggestions": suggestions})
+
     @app.route("/run", methods=["POST"])
     def run_pipeline():
         if not webhook._authorized(request.headers):
@@ -925,8 +1246,9 @@ def register_routes(app):
         try:
             summary = worker.run_pipeline()
             return summary
-        except Exception as exc:
-            return {"error": str(exc)}, 500
+        except Exception:
+            # Never leak internal error details to callers.
+            return {"error": "pipeline run failed"}, 500
 
     @app.route("/health")
     def health():

@@ -78,7 +78,8 @@ def test_google_callback_creates_user(client, monkeypatch):
 
     def fake_exchange(code):
         return {"provider": "google", "provider_id": "112233",
-                "email": "alice@gmail.com", "name": "Alice Chen"}
+                "email": "alice@gmail.com", "email_verified": True,
+                "name": "Alice Chen"}
 
     monkeypatch.setattr("src.webapp.views.oauth.google_exchange", fake_exchange)
     resp = client.get(f"/auth/google/callback?code=abc&state={state}")
@@ -114,7 +115,8 @@ def test_github_callback_links_to_existing_email(client, monkeypatch):
 
     def fake_exchange(code):
         return {"provider": "github", "provider_id": "778899",
-                "email": "bob@example.com", "name": "Bob"}
+                "email": "bob@example.com", "email_verified": True,
+                "name": "Bob"}
 
     monkeypatch.setattr("src.webapp.views.oauth.github_exchange", fake_exchange)
     resp = client.get(f"/auth/github/callback?code=abc&state={state}")
@@ -122,6 +124,28 @@ def test_github_callback_links_to_existing_email(client, monkeypatch):
     linked = db.get_user_by_oauth("github", "778899")
     assert linked is not None and linked["id"] == existing
     assert db.get_user_by_username("existinguser")["github_id"] == "778899"
+
+
+def test_github_unverified_email_does_not_link(client, monkeypatch):
+    """An unverified provider email must never link into an existing account
+    (account-takeover vector)."""
+    existing = db.create_user("victim", auth.hash_password("password123"),
+                              email="victim@example.com")
+    state = oauth.new_state()
+    client.set_cookie(oauth.STATE_COOKIE, state)
+
+    def fake_exchange(code):
+        return {"provider": "github", "provider_id": "999000",
+                "email": "victim@example.com", "email_verified": False,
+                "name": "Attacker"}
+
+    monkeypatch.setattr("src.webapp.views.oauth.github_exchange", fake_exchange)
+    resp = client.get(f"/auth/github/callback?code=abc&state={state}")
+    assert resp.status_code == 302  # login succeeds as a NEW user, not the victim
+    attacker = db.get_user_by_oauth("github", "999000")
+    assert attacker is not None
+    assert attacker["id"] != existing
+    assert attacker["email"] is None  # unverified email is not stored
 
 
 def test_unique_username_collision(app):

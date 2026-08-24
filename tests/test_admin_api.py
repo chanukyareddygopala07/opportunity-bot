@@ -23,7 +23,8 @@ class TestAdminAuth:
         assert resp.status_code == 302
         assert "/login" in resp.headers["Location"]
 
-    def test_admin_requires_admin_username(self, client, app):
+    def test_admin_requires_role(self, client, app):
+        # A normal (non-admin-role) user is redirected even with a session.
         with app.app_context():
             uid = db.create_user("student1", password_hash="x", profile={})
         _login(client, uid)
@@ -35,6 +36,7 @@ class TestAdminAuth:
         monkeypatch.setenv("ADMIN_USERNAME", "root")
         with app.app_context():
             uid = db.create_user("root", password_hash="x", profile={})
+            db.bootstrap_admin("root")
         _login(client, uid)
         resp = client.get("/admin")
         assert resp.status_code == 200
@@ -46,6 +48,7 @@ class TestAdminActions:
         monkeypatch.setenv("ADMIN_USERNAME", "root")
         with app.app_context():
             uid = db.create_user("root", password_hash="x", profile={})
+            db.bootstrap_admin("root")
             from src import sources as registry
             registry.sync_sources()
             sid = db.get_connection().execute(
@@ -82,6 +85,7 @@ class TestAdminActions:
         )
         with app.app_context():
             uid = db.create_user("root", password_hash="x", profile={})
+            db.bootstrap_admin("root")
         _login(client, uid)
         resp = client.post("/admin/run")
         assert resp.status_code == 200

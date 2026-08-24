@@ -11,6 +11,7 @@
     <section>
       <h3 class="section-title">Builder</h3>
       <form method="post" class="form">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
         <h4 class="subsection">Contact</h4>
         <div class="form-grid">
           <label>Email

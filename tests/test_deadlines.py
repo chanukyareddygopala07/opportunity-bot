@@ -1,7 +1,14 @@
 """Deadline engine tests — deterministic, timezone-aware statuses."""
+import datetime
+
 import pytest
 
 from src import deadlines
+
+
+def _date(offset_days):
+    """Calendar date N days from today in the app timezone (dynamic — never a time bomb)."""
+    return (deadlines.now_in_tz().date() + datetime.timedelta(days=offset_days)).isoformat()
 
 
 def test_no_deadline():
@@ -21,26 +28,26 @@ def test_open_when_far_away():
 
 
 def test_closing_soon_within_window():
-    assert deadlines.status({"deadline": "2026-09-10"}) == deadlines.CLOSING_SOON
-    assert deadlines.status({"deadline": "2026-08-21"}) == deadlines.CLOSING_SOON
+    assert deadlines.status({"deadline": _date(17)}) == deadlines.CLOSING_SOON
+    assert deadlines.status({"deadline": _date(1)}) == deadlines.CLOSING_SOON
 
 
 def test_closed_when_passed():
     assert deadlines.status({"deadline": "2020-01-01"}) == deadlines.CLOSED
-    assert deadlines.status({"deadline": "2026-08-19"}) == deadlines.CLOSED
+    assert deadlines.status({"deadline": _date(-1)}) == deadlines.CLOSED
 
 
 def test_boundary_exactly_today_is_closing_soon():
-    assert deadlines.status({"deadline": "2026-08-20"}) == deadlines.CLOSING_SOON
+    assert deadlines.status({"deadline": _date(0)}) == deadlines.CLOSING_SOON
 
 
 def test_boundary_31_days_is_open():
-    assert deadlines.status({"deadline": "2026-09-20"}) == deadlines.OPEN
+    assert deadlines.status({"deadline": _date(31)}) == deadlines.OPEN
 
 
 def test_is_active_excludes_closed():
     assert deadlines.is_active({"deadline": "2099-01-01"})
-    assert deadlines.is_active({"deadline": "2026-09-01"})
+    assert deadlines.is_active({"deadline": _date(8)})
     assert not deadlines.is_active({"deadline": "2020-01-01"})
     assert deadlines.is_active({})
 
@@ -53,7 +60,7 @@ def test_custom_today():
 
 
 def test_days_left():
-    assert deadlines.days_left("2026-08-21") == 1
+    assert deadlines.days_left(_date(1)) == 1
     assert deadlines.days_left("2099-01-01") > 0
     assert deadlines.days_left("garbage") is None
     assert deadlines.days_left(None) is None

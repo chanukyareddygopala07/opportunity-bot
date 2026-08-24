@@ -47,30 +47,41 @@ def run_pipeline():
     from src.discovery import fellowship_scout, internship_scout
     from src.notifications import notifier
 
-    run_id = str(uuid.uuid4())[:8]
+    # Full uuid; the 8-char display id is only for humans.
+    run_id = str(uuid.uuid4())
     started = db.now_iso()
-    queued = crawl_queue.enqueue_from_sources(run_id)
-    fellowship_new = fellowship_scout.run(category="fellowship")
-    internship_new = internship_scout.run(category="internship")
-    settled = crawl_queue.settle(run_id)
-    verified = verification.verify_due(limit=20)
-    notified = notifier.run()
-    ai_assessed = ai.assess_new()
-    maintenance_result = maintenance.run_maintenance()
-    summary = {
-        "fellowship_scout": fellowship_new,
-        "internship_scout": internship_new,
-        "notifications": notified,
-        "ai_assessments": ai_assessed,
-        "verification": verified,
-        "crawl_queue": {"queued": queued, "settled": settled},
-        "maintenance": maintenance_result,
-        "discovery": discovery_summary(),
-    }
-    db.log_execution(
-        run_id, "worker", "pipeline", "success", json.dumps(summary), started
-    )
+    summary = {}
+    try:
+        queued = crawl_queue.enqueue_from_sources(run_id)
+        fellowship_new = fellowship_scout.run(
+            category="fellowship", run_id=run_id)
+        internship_new = internship_scout.run(
+            category="internship", run_id=run_id)
+        settled = crawl_queue.settle(run_id)
+        verified = verification.verify_due(limit=20)
+        notified = notifier.run()
+        ai_assessed = ai.assess_new()
+        maintenance_result = maintenance.run_maintenance()
+        summary = {
+            "run_id": run_id,
+            "fellowship_scout": fellowship_new,
+            "internship_scout": internship_new,
+            "notifications": notified,
+            "ai_assessments": ai_assessed,
+            "verification": verified,
+            "crawl_queue": {"queued": queued, "settled": settled},
+            "maintenance": maintenance_result,
+            "discovery": discovery_summary(),
+        }
+        status, message = "success", json.dumps(summary)
+    except Exception as exc:
+        # A failed stage must never skip run logging.
+        summary = {"run_id": run_id, "error": f"{type(exc).__name__}: {exc}"}
+        status, message = "failed", json.dumps(summary)
+    db.log_execution(run_id, "worker", "pipeline", status, message, started)
     print(json.dumps(summary))
+    if status == "failed":
+        raise RuntimeError(message) from None
     return summary
 
 

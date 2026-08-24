@@ -175,7 +175,7 @@ class BaseAgent:
             self._metrics["last_run"] = datetime.now(timezone.utc).isoformat()
 
             self.status = result.status
-            self._record_task(task_id, result, duration_ms)
+            self._record_task(task_id, input_data, result, duration_ms)
             self._emit_event(result)
 
             return result
@@ -193,11 +193,12 @@ class BaseAgent:
                 status=AgentStatus.FAILED,
                 error=str(exc)[:500],
             )
-            self._record_task(task_id, error_result, duration_ms)
+            self._record_task(task_id, input_data, error_result, duration_ms)
             self._emit_event(error_result)
             return error_result
 
-    def _record_task(self, task_id: str, result: AgentResult, duration_ms: int):
+    def _record_task(self, task_id: str, input_data, result: AgentResult,
+                     duration_ms: int):
         """Record task execution to the agent_tasks table."""
         try:
             conn = db.get_connection()
@@ -211,7 +212,7 @@ class BaseAgent:
                         task_id,
                         self.AGENT_ID,
                         result.status.value,
-                        json.dumps(result.data, default=str),
+                        json.dumps(input_data, default=str),
                         json.dumps(result.to_dict(), default=str),
                         result.confidence,
                         result.error,
@@ -243,9 +244,9 @@ class BaseAgent:
             conn = db.get_connection()
             try:
                 conn.execute(
-                    "INSERT INTO agent_events (event_type, agent_id, data, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (event.event_type, event.agent_id,
+                    "INSERT INTO agent_events (event_id, event_type, agent_id, data, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (event.event_id, event.event_type, event.agent_id,
                      json.dumps(event.data), event.timestamp),
                 )
                 conn.commit()

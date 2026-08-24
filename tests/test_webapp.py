@@ -1,10 +1,15 @@
 """Phase 17 — web front-end tests: auth, pages, bookmarks, pipeline hook."""
 import os
+from datetime import datetime, timedelta, timezone
 
 from src import db, schema
 from src.webapp import auth, helpers
 
 TMP_DB = os.environ.get("TMP_DB", "/tmp/opp.db")
+
+
+def _soon(days=14):
+    return (datetime.now(timezone.utc) + timedelta(days=days)).date().isoformat()
 
 
 def _seed(app):
@@ -28,7 +33,7 @@ def _seed(app):
         "remote": 0,
         "match_score": 60,
         "eligibility_status": "likely_eligible",
-        "deadline": "2026-09-01",
+        "deadline": _soon(14),
         "first_seen": "2026-08-10T00:00:00+00:00",
     })
 

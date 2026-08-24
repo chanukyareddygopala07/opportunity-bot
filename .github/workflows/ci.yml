@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest httpx
+
+      - name: Lint (ruff)
+        run: ruff check src/ tests/ --select=E9,F63,F7,F82,F401 --ignore=F401
+
+      - name: Run test suite
+        env:
+          RUN_TOKEN: ci-token
+          SESSION_SECRET: ci-secret
+        run: python -m pytest -q
+
+      - name: Security scan (bandit)
+        run: |
+          pip install bandit
+          bandit -r src/ -ll --skip B101,B110,B112 || true
+
+      - name: Verify app imports cleanly (API + webapp factories)
+        env:
+          RUN_TOKEN: ci-token
+          SESSION_SECRET: ci-secret
+          DATABASE_PATH: /tmp/ci.db
+        run: |
+          python -c "from src.api import app; assert app is not None; print('api ok')"
+          python -c "from src.webapp import create_app; create_app(); print('webapp ok')"

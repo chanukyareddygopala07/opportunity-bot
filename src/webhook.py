@@ -6,6 +6,7 @@ Endpoints:
 
 The token comes from the RUN_TOKEN environment variable.
 """
+import hmac
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,10 +19,12 @@ STATS_PATH = "/stats"
 
 
 def _authorized(headers):
+    """Constant-time check of the X-Run-Token header against RUN_TOKEN."""
     expected = os.environ.get("RUN_TOKEN", "")
     if not expected:
         return False
-    return headers.get("X-Run-Token") == expected
+    supplied = headers.get("X-Run-Token") or ""
+    return hmac.compare_digest(supplied.encode(), expected.encode())
 
 
 def stats_payload():
@@ -32,9 +35,6 @@ def stats_payload():
         for name in ("opportunities", "users", "sources", "notifications",
                      "execution_logs", "verifications", "ai_assessments"):
             counts[name] = conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
-        counts["opportunities"] = conn.execute(
-            "SELECT COUNT(*) FROM opportunities"
-        ).fetchone()[0]
         counts["duplicates"] = conn.execute(
             "SELECT COUNT(*) FROM opportunities WHERE duplicate_of IS NOT NULL"
         ).fetchone()[0]
@@ -83,8 +83,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             summary = worker.run_pipeline()
             self._send_json(200, summary)
-        except Exception as exc:
-            self._send_json(500, {"error": str(exc)})
+        except Exception:
+            # Never leak internal error details to callers.
+            self._send_json(500, {"error": "pipeline run failed"})
 
     def log_message(self, *args):
         pass

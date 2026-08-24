@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -13,10 +13,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 COPY config ./config
 COPY database ./database
-COPY scripts ./scripts
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data \
+    && useradd --system --uid 10001 --no-create-home aawara \
+    && chown -R aawara:aawara /app
+USER aawara
 
-EXPOSE 8080
+EXPOSE 8080 8000
 
 CMD ["python", "-m", "src.webapp"]

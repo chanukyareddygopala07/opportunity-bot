@@ -41,6 +41,7 @@
           </div>
           {% if a.notes %}<p class="small muted">📝 {{ a.notes }}</p>{% endif %}
           <form method="post" action="{{ url_for('update_application_status', opportunity_id=a.opportunity_id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <select name="status">
               {% for s in ('applied', 'interview', 'offer', 'rejected', 'withdrawn') %}
                 <option value="{{ s }}" {{ 'selected' if a.status == s }}>{{ s }}</option>
@@ -49,6 +50,7 @@
             <button class="btn btn-small" type="submit">Update</button>
           </form>
           <form method="post" action="{{ url_for('delete_application', opportunity_id=a.opportunity_id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <button class="btn btn-small" type="submit">Delete</button>
           </form>
         </div>

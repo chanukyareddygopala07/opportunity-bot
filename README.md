@@ -3,6 +3,32 @@
 Zero-budget automated discovery of fellowships, scholarships and internships
 (Indian student, B.Tech CSE). Built on self-hosted n8n + SQLite + local Ollama.
 
+## Production hardening (2026-08)
+
+The platform went through a full production audit (`docs/PRODUCTION_AUDIT.md`)
+and remediation program (`docs/PRODUCTION_ROADMAP.md`,
+`docs/IMPLEMENTATION_STATUS.md`). Highlights now live in the codebase:
+
+- **Security**: RBAC role-based admin (no more username check), CSRF tokens on
+  all POSTs, session tokens hashed at rest, URL scheme allow-list on crawled
+  data, verified-email-only OAuth linking, constant-time token compares,
+  rate limiting (web + API), secure-cookie policy, whitelisted profile data in
+  LLM prompts. Details: `docs/SECURITY.md`.
+- **Reliability**: crawl-job retries wired end-to-end with stale-queue
+  recovery and dead-letter semantics; change detection records every field
+  mutation with old/new values; pipeline runs always logged (success or fail);
+  SQLite WAL + busy_timeout for multi-container access.
+- **Correctness**: orchestrator per-opportunity pipeline contract fixed and
+  regression-tested; classification uses word-boundary matching ("ai" no
+  longer matches "email"); verification treats 403/429 as bot walls instead
+  of dead links; 4.0-scale GPA thresholds converted before comparison.
+- **Ops**: pinned requirements (fastapi/uvicorn/pydantic included),
+  self-contained Dockerfile, hardened compose (mandatory RUN_TOKEN /
+  SESSION_SECRET / n8n auth), GitHub Actions CI (ruff + pytest + bandit +
+  smoke checks), `.env.example` documents every variable.
+
+Tests: `python3 -m pytest -q` → **527 passed** (2026-08-24).
+
 ## Phase 18 — Discovery overhaul (more + better internships)
 
 - **14 verified official ATS sources added** (probed live, public APIs only):

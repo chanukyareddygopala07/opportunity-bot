@@ -71,6 +71,10 @@ def _cooldown_for(status_code):
 
 def _request(url, timeout, max_bytes, attempts, per_domain_delay, source=None):
     parsed = urlparse(url)
+    # Scheme guard: http(s) for the web, file:// only as an operator/test
+    # fixture path (sources come from operator config, not crawled content).
+    if parsed.scheme not in ("http", "https", "file"):
+        raise FetchError(f"blocked non-http(s) scheme: {parsed.scheme or 'none'}")
     domain = parsed.netloc
     delay = max(per_domain_delay, (source or {}).get("rate_limit_ms", 0) / 1000.0)
     elapsed = time.monotonic() - _last_request.get(domain, 0)

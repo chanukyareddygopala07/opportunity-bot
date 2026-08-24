@@ -25,13 +25,20 @@ CHECK_MAX_BYTES = 65536
 
 
 def check_link(url):
-    """Returns (status, message): live / dead / error."""
+    """Returns (status, message): live / dead / error.
+
+    404/410 mean the page is really gone -> dead. 403/429 usually mean a bot
+    wall, not closure: treating those as dead falsely killed live links, so
+    they return "error" (status preserved, re-check scheduled).
+    """
     try:
         data, final_url, _status = fetcher.fetch_bytes(
             url, timeout=CHECK_TIMEOUT, max_bytes=CHECK_MAX_BYTES, attempts=1
         )
         return "live", "link responds"
     except fetcher.FetchError as exc:
+        if exc.code == 403 or exc.code == 429:
+            return "error", f"HTTP {exc.code} (bot-blocked; not treated as dead)"
         if exc.code is not None and 400 <= exc.code < 600:
             return "dead", f"HTTP {exc.code}"
         return "error", str(exc)[:200]

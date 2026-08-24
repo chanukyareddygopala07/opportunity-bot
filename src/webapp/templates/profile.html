@@ -6,6 +6,7 @@
     computed against these fields. Leave a field empty if you don't know it.</p>
 
   <form method="post" class="form">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
     <div class="form-grid">
       <label>Username
         <input name="username_display" value="{{ user.username }}" disabled>

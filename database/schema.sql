@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     email           TEXT,
     chat_id         TEXT,
     telegram_username TEXT,
+    role            TEXT NOT NULL DEFAULT 'user',
     country         TEXT,
     citizenship     TEXT,
     degree          TEXT,
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id          INTEGER PRIMARY KEY,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token       TEXT UNIQUE NOT NULL,
+    token_algo  TEXT,
     created_at  TEXT,
     expires_at  TEXT
 );

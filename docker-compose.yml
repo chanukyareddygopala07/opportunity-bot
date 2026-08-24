@@ -15,11 +15,11 @@ services:
       - TZ=${TZ:-Asia/Kolkata}
       - N8N_DIAGNOSTICS_ENABLED=false
       - N8N_VERSION_NOTIFICATIONS_ENABLED=false
-      - RUN_TOKEN=${RUN_TOKEN:-}
+      - RUN_TOKEN=${RUN_TOKEN:?set RUN_TOKEN in .env}
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
-      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?set N8N_BASIC_AUTH_PASSWORD in .env}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
     volumes:
       - n8n_data:/home/node/.n8n
     healthcheck:
@@ -31,7 +31,8 @@ services:
 
   web:
     build:
-      context: ./scripts/telegram-bot
+      context: .
+      dockerfile: Dockerfile
     container_name: opportunity-web
     restart: unless-stopped
     command: ["python", "-m", "src.webapp"]
@@ -41,8 +42,9 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - SEND_TELEGRAM=false
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/opportunity.db}
-      - RUN_TOKEN=${RUN_TOKEN:-}
-      - SESSION_SECRET=${SESSION_SECRET:-change-me}
+      - RUN_TOKEN=${RUN_TOKEN:?set RUN_TOKEN in .env}
+      - SESSION_SECRET=${SESSION_SECRET:?set SESSION_SECRET (openssl rand -hex 32) in .env}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - OAUTH_REDIRECT_BASE=${OAUTH_REDIRECT_BASE:-http://localhost:8080}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -50,8 +52,10 @@ services:
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.6-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
       - DEBUG_DISCOVERY=${DEBUG_DISCOVERY:-false}
       - SAVE_REJECTED=${SAVE_REJECTED:-false}
       - SAVE_RAW_RESPONSES=${SAVE_RAW_RESPONSES:-false}
@@ -60,33 +64,28 @@ services:
       - PER_DOMAIN_DELAY_MS=${PER_DOMAIN_DELAY_MS:-1500}
       - REQUEST_TIMEOUT_MS=${REQUEST_TIMEOUT_MS:-20000}
       - MAX_RETRIES=${MAX_RETRIES:-3}
+      - COOKIE_SECURE=${COOKIE_SECURE:-auto}
       - TZ=${TZ:-Asia/Kolkata}
     volumes:
-      - ./src:/app/src
-      - ./config:/app/config
       - ./data:/app/data
-      - ./database:/app/database
-      - ./tests:/app/tests
-      - ./pytest.ini:/app/pytest.ini
     depends_on:
       - n8n
 
   api:
-    image: python:3.13-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: opportunity-api
     restart: unless-stopped
-    working_dir: /app
-    command: sh -c "pip install --no-cache-dir -q fastapi uvicorn pydantic && python -m src.api"
+    command: ["python", "-m", "src.api"]
     ports:
       - "127.0.0.1:8000:8000"
     environment:
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/opportunity.db}
-      - RUN_TOKEN=${RUN_TOKEN:-}
+      - RUN_TOKEN=${RUN_TOKEN:?set RUN_TOKEN in .env}
+      - TZ=${TZ:-Asia/Kolkata}
     volumes:
-      - ./src:/app/src
-      - ./config:/app/config
       - ./data:/app/data
-      - ./database:/app/database
     depends_on:
       - web
 

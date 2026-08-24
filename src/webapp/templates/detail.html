@@ -3,8 +3,8 @@
 {% block meta_description %}{{ opp.title }} — {{ opp.organization or 'opportunity' }}{% if opp.deadline %} · deadline {{ opp.deadline }}{% endif %} on AAWARA.{% endblock %}
 {% block og_title %}{{ opp.title }} — AAWARA{% endblock %}
 {% block og_description %}{{ opp.title }} by {{ opp.organization or 'unknown' }}{% if opp.deadline %} · deadline {{ opp.deadline }}{% endif %}.{% endblock %}
-{% block canonical %}{{ url_for('detail', opportunity_id=opp.id, _external=True) }}{% endblock %}
-{% block og_url %}{{ url_for('detail', opportunity_id=opp.id, _external=True) }}{% endblock %}
+{% block canonical %}{{ base_url }}{{ url_for('detail', opportunity_id=opp.id) }}{% endblock %}
+{% block og_url %}{{ base_url }}{{ url_for('detail', opportunity_id=opp.id) }}{% endblock %}
 {% block content %}
   <a class="btn btn-small" href="{{ request.referrer or url_for('opportunities_list') }}">‹ Back</a>
 
@@ -25,6 +25,7 @@
         {% if application %}
           <span class="app-status app-{{ application.status }}">{{ application.status }} · {{ (application.applied_at or '')[:10] }}</span>
           <form method="post" action="{{ url_for('update_application_status', opportunity_id=opp.id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <select name="status" class="small">
               {% for s in ('applied', 'interview', 'offer', 'rejected', 'withdrawn') %}
                 <option value="{{ s }}" {{ 'selected' if application.status == s }}>{{ s }}</option>
@@ -33,19 +34,23 @@
             <button class="btn btn-small" type="submit">Update</button>
           </form>
           <form method="post" action="{{ url_for('delete_application', opportunity_id=opp.id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <button class="btn btn-small" type="submit">Remove</button>
           </form>
         {% else %}
           <form method="post" action="{{ url_for('mark_applied', opportunity_id=opp.id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <button class="btn" type="submit">✓ Mark applied</button>
           </form>
         {% endif %}
         {% if bookmarked %}
           <form method="post" action="{{ url_for('unsave', opportunity_id=opp.id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <button class="btn" type="submit">Unsave</button>
           </form>
         {% else %}
           <form method="post" action="{{ url_for('save', opportunity_id=opp.id) }}" class="inline">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
             <button class="btn btn-primary" type="submit">Save</button>
           </form>
         {% endif %}
@@ -54,11 +59,12 @@
       {% endif %}
       {% if opp.application_url or opp.official_url or opp.source_url %}
         <a class="btn btn-primary" target="_blank" rel="noopener"
-           href="{{ opp.application_url or opp.official_url or opp.source_url }}">Apply ↗</a>
+           href="{{ (opp.application_url or opp.official_url or opp.source_url) | safe_url }}">Apply ↗</a>
       {% endif %}
       <details class="report-form">
         <summary class="small muted">Report incorrect information</summary>
         <form method="post" action="{{ url_for('report_opportunity', opportunity_id=opp.id) }}">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
           <div class="form-grid">
             <label>Reason
               <select name="reason" required>
@@ -163,7 +169,7 @@
 
     <p class="small muted">
       Seen first {{ opp.first_seen | short_date }} · last {{ opp.last_seen | short_date }}
-      {% if opp.source_url %} · source: <a target="_blank" rel="noopener" href="{{ opp.source_url }}">{{ opp.source_url }}</a>{% endif %}
+      {% if opp.source_url %} · source: <a target="_blank" rel="noopener" href="{{ opp.source_url | safe_url }}">{{ opp.source_url }}</a>{% endif %}
     </p>
   </article>
 {% endblock %}

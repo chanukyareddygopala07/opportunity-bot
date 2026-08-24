@@ -19,6 +19,7 @@
     <div class="divider"><span>or with email &amp; password</span></div>
     {% endif %}
     <form method="post" class="form">
+        {% if csrf_token() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
       <label>Username
         <input name="username" required autofocus minlength="3">
       </label>

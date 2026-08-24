@@ -1,14 +1,20 @@
 """Phase H — JSON REST API (FastAPI, port 8000).
 
 Read-mostly public API over the same SQLite store the web UI uses.
+Public: opportunity browse/search, types, enabled source list.
+Token-gated (X-Run-Token): crawl jobs, stats, agent introspection and
+execution — internal pipeline infrastructure never exposed anonymously.
 Run:  uvicorn src.api:app --port 8000   (or  python -m src.api)
 """
+import hmac
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 
 from src import db, deadlines, trust, schema
 from src.envfile import load_dotenv
+from src.webhook import _authorized
 from src.webapp import helpers
 
 load_dotenv()
@@ -28,6 +34,27 @@ class SearchRequest(BaseModel):
     remote: bool | None = None
     verified_only: bool | None = None
     limit: int = Field(20, ge=1, le=100)
+
+
+# --- Anonymous abuse-report rate limiting (in-process; per-IP token bucket) ---
+_REPORT_ATTEMPTS: dict[str, list[float]] = {}
+_REPORT_MAX = 5
+_REPORT_WINDOW_SECONDS = 3600
+
+# --- Global per-IP request throttle ---
+_API_ATTEMPTS: dict[str, list[float]] = {}
+_API_MAX_REQUESTS = 120
+_API_WINDOW_SECONDS = 60
+
+
+def _rate_limited(key, store_, max_requests, window_seconds):
+    now = time.time()
+    window = [t for t in store_.get(key, []) if now - t < window_seconds]
+    store_[key] = window
+    if len(window) >= max_requests:
+        return True
+    store_[key].append(now)
+    return False
 
 
 def _serialize(opp, user=None):
@@ -78,6 +105,18 @@ def create_app():
         description="Opportunity discovery for Indian students — Arjun & Vidya.",
         version="1.0.0",
     )
+
+    @app.middleware("http")
+    async def throttle(request: Request, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        if _rate_limited(client_ip, _API_ATTEMPTS,
+                         _API_MAX_REQUESTS, _API_WINDOW_SECONDS):
+            return JSONResponse(
+                {"error": "rate limit exceeded"},
+                status_code=429,
+                headers={"Retry-After": str(_API_WINDOW_SECONDS)},
+            )
+        return await call_next(request)
 
     @app.get("/health")
     def health():
@@ -144,12 +183,17 @@ def create_app():
         }
 
     @app.get("/crawl/jobs")
-    def crawl_jobs(status: str | None = None, limit: int = Query(50, le=200)):
+    def crawl_jobs(request: Request, status: str | None = None,
+                   limit: int = Query(50, le=200)):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         jobs = db.list_crawl_jobs(limit=limit, status=status)
         return {"total": len(jobs), "items": jobs}
 
     @app.get("/stats")
-    def stats():
+    def stats(request: Request):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         payload = None
         from src import webhook
         payload = webhook.stats_payload()
@@ -159,26 +203,38 @@ def create_app():
         return payload
 
     @app.post("/report/{opportunity_id}")
-    def report(opportunity_id: int, reason: str, notes: str | None = None):
+    def report(opportunity_id: int, request: Request, reason: str,
+               notes: str | None = None):
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        window = [t for t in _REPORT_ATTEMPTS.get(client_ip, [])
+                  if now - t < _REPORT_WINDOW_SECONDS]
+        if len(window) >= _REPORT_MAX:
+            raise HTTPException(429, "too many reports; try again later")
         if not db.get_opportunity(opportunity_id):
             raise HTTPException(404, "opportunity not found")
-        db.add_report(opportunity_id, None, reason, notes)
-        return {"ok": True, "report_id": opportunity_id}
+        report_id = db.add_report(opportunity_id, None, reason, notes)
+        window.append(now)
+        _REPORT_ATTEMPTS[client_ip] = window
+        return {"ok": True, "report_id": report_id}
 
     @app.post("/crawl")
     def trigger_crawl(request: Request):
         token = request.headers.get("X-Run-Token") or ""
         expected = os.environ.get("RUN_TOKEN")
-        if not expected or token != expected:
+        if not expected or not hmac.compare_digest(
+                token.encode(), expected.encode()):
             raise HTTPException(403, "invalid run token")
         from src import worker
         summary = worker.run_pipeline()
         return {"ok": True, "summary": summary}
 
-    # --- AAWARA Agent System endpoints ---
+    # --- AAWARA Agent System endpoints (token-gated: internal infrastructure) ---
 
     @app.get("/api/agents")
-    def list_agents():
+    def list_agents(request: Request):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         from src.agents.orchestrator import get_orchestrator
         orch = get_orchestrator()
         if not orch.get_all_agents():
@@ -190,7 +246,9 @@ def create_app():
         }
 
     @app.get("/api/agents/{agent_id}")
-    def agent_detail(agent_id: str):
+    def agent_detail(agent_id: str, request: Request):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         from src.agents.orchestrator import get_orchestrator
         orch = get_orchestrator()
         agent = orch.get_agent(agent_id)
@@ -219,10 +277,13 @@ def create_app():
 
     @app.get("/api/agent-tasks")
     def list_agent_tasks(
+        request: Request,
         agent_id: str | None = None,
         status: str | None = None,
         limit: int = Query(50, le=200),
     ):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         conn = db.get_connection()
         try:
             sql = "SELECT * FROM agent_tasks"
@@ -242,10 +303,13 @@ def create_app():
 
     @app.get("/api/agent-events")
     def list_agent_events(
+        request: Request,
         agent_id: str | None = None,
         event_type: str | None = None,
         limit: int = Query(50, le=200),
     ):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         conn = db.get_connection()
         try:
             sql = "SELECT * FROM agent_events"
@@ -264,14 +328,18 @@ def create_app():
         return {"success": True, "data": [dict(r) for r in rows]}
 
     @app.post("/api/agents/{agent_id}/run")
-    def run_agent(agent_id: str):
+    def run_agent(agent_id: str, request: Request):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         from src.agents.orchestrator import get_orchestrator
         orch = get_orchestrator()
         result = orch.run_agent(agent_id, {})
         return {"success": True, "data": result.to_dict()}
 
     @app.get("/api/pipeline/status")
-    def pipeline_status():
+    def pipeline_status(request: Request):
+        if not _authorized(request.headers):
+            raise HTTPException(401, "unauthorized")
         from src.agents.orchestrator import get_orchestrator
         orch = get_orchestrator()
         return {"success": True, "data": orch.get_pipeline_status()}

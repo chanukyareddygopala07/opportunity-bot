@@ -4,6 +4,11 @@ from datetime import datetime, timedelta, timezone
 from src import db, verification
 
 
+def _soon():
+    """Deadline 3 days out (dynamic — never stale)."""
+    return (datetime.now(timezone.utc) + timedelta(days=3)).date().isoformat()
+
+
 def _seed_opp(deadline=None, official_url=None, application_url="https://x.example/a"):
     return db.upsert_opportunity({
         "title": "T", "organization": "Org", "type": "internship",
@@ -22,7 +27,7 @@ class TestSchedule:
         assert timedelta(days=6) < timedelta(seconds=days) < timedelta(days=8)
 
     def test_twelve_hours_when_deadline_within_week(self, tmp_db):
-        opp_id = _seed_opp(deadline="2026-08-21")
+        opp_id = _seed_opp(deadline=_soon())
         opp = db.get_opportunity(opp_id)
         verification.schedule_next_verification(opp, "unverified")
         next_at = db.get_opportunity(opp_id)["next_verification"]
@@ -52,7 +57,7 @@ class TestDue:
 
     def test_deadline_items_come_first(self, tmp_db):
         far_id = _seed_opp(deadline="2099-01-01")
-        soon_id = _seed_opp(deadline="2026-08-21")
+        soon_id = _seed_opp(deadline=_soon())
         due = db.get_due_verifications(10)
         assert due[0]["id"] == soon_id
         assert due[1]["id"] == far_id

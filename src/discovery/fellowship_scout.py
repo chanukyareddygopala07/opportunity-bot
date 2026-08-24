@@ -70,8 +70,8 @@ def _link_source(opportunity_id, source_id):
         conn.close()
 
 
-def scout_source(source):
-    run_id = str(uuid.uuid4())[:8]
+def scout_source(source, run_id=None):
+    run_id = run_id or str(uuid.uuid4())[:8]
     name = source.get("name") or source.get("url")
     started = db.now_iso()
     stats = dict(run_id=run_id, scout="fellowship_scout", source_id=source.get("id"),
@@ -158,13 +158,13 @@ def scout_source(source):
     return len(entries_list), matched
 
 
-def run(category="fellowship", sources_file=None):
+def run(category="fellowship", sources_file=None, run_id=None):
     db.init_db()
     sources = registry.load_config(sources_file) if sources_file else None
     registry.sync_sources(sources)
     total = 0
     for source in registry.list_enabled_sources(category):
-        _, matched = scout_source(source)
+        _, matched = scout_source(source, run_id=run_id)
         total += matched
     return total
 

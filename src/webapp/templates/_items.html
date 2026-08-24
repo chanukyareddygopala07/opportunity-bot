@@ -40,7 +40,7 @@
     <a class="btn btn-small" href="{{ url_for('detail', opportunity_id=opp.id) }}">Details</a>
     {% if opp.application_url or opp.official_url or opp.source_url %}
       <a class="btn btn-small btn-primary" target="_blank" rel="noopener"
-         href="{{ opp.application_url or opp.official_url or opp.source_url }}">Apply</a>
+         href="{{ (opp.application_url or opp.official_url or opp.source_url) | safe_url }}">Apply</a>
     {% endif %}
   </div>
 </div>

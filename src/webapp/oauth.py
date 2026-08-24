@@ -21,6 +21,7 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
+GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 
 
 class OAuthError(Exception):
@@ -97,6 +98,9 @@ def google_exchange(code):
         "provider": "google",
         "provider_id": str(provider_id),
         "email": info.get("email"),
+        # Google explicitly tells us whether the email is verified; account
+        # linking by email is only safe when this is true.
+        "email_verified": bool(info.get("email_verified")),
         "name": info.get("name"),
     }
 
@@ -140,10 +144,34 @@ def github_exchange(code):
     provider_id = info.get("id")
     if not provider_id:
         raise OAuthError("github userinfo missing id")
+    email = info.get("email")
+    email_verified = False
+    # /user email can be null or unverified; the emails endpoint is the
+    # source of truth for a primary verified address.
+    try:
+        emails = _urlopen_json(
+            GITHUB_EMAILS_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "opportunity-radar",
+            },
+        )
+        if isinstance(emails, list):
+            primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
+            if primary and primary.get("email"):
+                email, email_verified = primary["email"], True
+            elif not email:
+                first_verified = next((e for e in emails if e.get("verified") and e.get("email")), None)
+                if first_verified:
+                    email, email_verified = first_verified["email"], True
+    except Exception:
+        pass  # fall through with the possibly-null profile email
     return {
         "provider": "github",
         "provider_id": str(provider_id),
-        "email": info.get("email"),
+        "email": email,
+        "email_verified": email_verified,
         "name": info.get("name") or info.get("login"),
     }
 
@@ -162,14 +190,23 @@ def unique_username(name, email):
 
 
 def find_or_create_user(profile):
-    """Return a user id linked to the OAuth profile, creating/linking as needed."""
+    """Return a user id linked to the OAuth profile, creating/linking as needed.
+
+    Email-based account linking happens ONLY when the provider asserts the
+    email is verified — otherwise an attacker who sets an arbitrary
+    unverified email at the provider could take over a local account.
+    """
     provider = profile["provider"]
     provider_id = profile["provider_id"]
     user = db.get_user_by_oauth(provider, provider_id)
     if user:
         return user["id"]
     email = profile.get("email")
-    existing = db.get_user_by_email(email) if email else None
+    existing = (
+        db.get_user_by_email(email)
+        if email and profile.get("email_verified")
+        else None
+    )
     if existing:
         db.link_oauth(existing["id"], provider, provider_id)
         return existing["id"]
@@ -177,11 +214,14 @@ def find_or_create_user(profile):
 
     seed = store.load_profile() or {}
     username = unique_username(profile.get("name"), email or "")
+    # Avoid colliding with an existing (unverified-email) local account.
+    while db.get_user_by_username(username):
+        username = f"{username}x"
     user_id = db.create_user(
         username,
         password_hash=None,
         profile=seed,
-        email=email,
+        email=email if profile.get("email_verified") else None,
         google_id=str(provider_id) if provider == "google" else None,
         github_id=str(provider_id) if provider == "github" else None,
     )
