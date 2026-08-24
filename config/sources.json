@@ -959,15 +959,15 @@
       "type": "official_program",
       "category": "hackathon",
       "url": "https://unstop.com/hackathons?oppstatus=open",
-      "adapter": "unstop_api",
-      "method": "hackathon_html",
+      "adapter": "unstop_jina",
       "priority": 1,
       "trust_score": 90,
-      "enabled": false,
+      "enabled": true,
       "check_frequency_hours": 6,
       "include_patterns": [],
       "exclude_patterns": [],
-      "_note": "Public API returns empty without frontend auth token; SPA listing"
+      "_note": "Read via Jina Reader (SPA); deadlines are relative windows converted at fetch time",
+      "method": "hackathon_jina"
     },
     {
       "name": "Smart India Hackathon",
@@ -1007,15 +1007,15 @@
       "type": "official_program",
       "category": "hackathon",
       "url": "https://lablab.ai/ai-hackathons",
-      "adapter": "lablab_html",
-      "method": "hackathon_html",
+      "adapter": "lablab_jina",
+      "method": "hackathon_jina",
       "priority": 1,
       "trust_score": 90,
-      "enabled": false,
+      "enabled": true,
       "check_frequency_hours": 6,
       "include_patterns": [],
       "exclude_patterns": [],
-      "_note": "Client-rendered Next.js app; no public JSON found in probe"
+      "_note": "Read via Jina Reader; TBA dates left null for enrichment pass"
     },
     {
       "name": "DoraHacks Hackathons",
@@ -1023,15 +1023,15 @@
       "type": "official_program",
       "category": "hackathon",
       "url": "https://dorahacks.io/hackathon",
-      "adapter": "dorahacks_html",
-      "method": "hackathon_html",
+      "adapter": "dorahacks_jina",
+      "method": "hackathon_jina",
       "priority": 3,
       "trust_score": 80,
-      "enabled": false,
+      "enabled": true,
       "check_frequency_hours": 6,
       "include_patterns": [],
       "exclude_patterns": [],
-      "_note": "Client-side rendered"
+      "_note": "Read via Jina Reader; ended events skipped"
     },
     {
       "name": "HackIndia Hackathons",

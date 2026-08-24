@@ -54,7 +54,7 @@ class TestWorkerPipeline:
             "maintenance": {"expired": 0, "pruned_logs": 0,
                             "pruned_errors": 0, "pruned_notifications": 0},
         }
-        assert {k: v for k, v in summary.items() if k not in ("discovery", "crawl_queue", "verification", "run_id")} == expected
+        assert {k: v for k, v in summary.items() if k not in ("discovery", "crawl_queue", "verification", "enrichment", "run_id")} == expected
         assert "run_id" in summary
         assert "discovery" in summary
         assert summary["crawl_queue"]["queued"] > 0

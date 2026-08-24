@@ -183,8 +183,16 @@ class TestWorkerIntegration:
         import src.worker as worker
         monkeypatch.setattr("src.discovery.fellowship_scout.run", lambda **k: 3)
         monkeypatch.setattr("src.discovery.internship_scout.run", lambda **k: 2)
+        monkeypatch.setattr(
+            "src.discovery.hackathon_scout.run", lambda **k: 0
+        )
         monkeypatch.setattr("src.notifications.notifier.run", lambda: 1)
         monkeypatch.setattr("src.ai.assess_new", lambda limit=5: 4)
+        monkeypatch.setattr("src.verification.verify_due", lambda limit=20: {})
+        monkeypatch.setattr(
+            "src.discovery.enrichment.run_enrichment",
+            lambda limit=15: {"candidates": 0, "filled": 0, "confirmed": 0,
+                              "conflicts": 0, "unreadable": 0, "no_change": 0})
         summary = worker.run_pipeline()
         assert summary["ai_assessments"] == 4
         assert json.loads(capsys.readouterr().out)["ai_assessments"] == 4

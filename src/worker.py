@@ -61,6 +61,10 @@ def run_pipeline():
             category="hackathon", run_id=run_id)
         settled = crawl_queue.settle(run_id)
         verified = verification.verify_due(limit=20)
+        # Accuracy pass: re-read thin records' own detail pages, recover
+        # missing deadlines, and flag (never overwrite) conflicting facts.
+        from src.discovery import enrichment
+        enrichment_summary = enrichment.run_enrichment()
         notified = notifier.run()
         ai_assessed = ai.assess_new()
         maintenance_result = maintenance.run_maintenance()
@@ -72,6 +76,7 @@ def run_pipeline():
             "notifications": notified,
             "ai_assessments": ai_assessed,
             "verification": verified,
+            "enrichment": enrichment_summary,
             "crawl_queue": {"queued": queued, "settled": settled},
             "maintenance": maintenance_result,
             "discovery": discovery_summary(),

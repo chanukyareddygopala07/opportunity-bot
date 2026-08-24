@@ -25,9 +25,9 @@ to parse is skipped, not guessed.
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from src.discovery import fetcher
+from src.discovery import fetcher, jina
 
 logger = logging.getLogger(__name__)
 
@@ -236,8 +236,9 @@ def internshala_adapter(source):
         return entries
     html = data.decode("utf-8", "replace")
     seen = set()
+    import html as html_lib
     for link, raw_title in _INTERNSHALA_TITLE.findall(html):
-        title = raw_title.strip()
+        title = html_lib.unescape(raw_title).strip()
         if link in seen or len(title) < 8:
             continue
         seen.add(link)
@@ -270,6 +271,194 @@ ADAPTERS = {
     "mlh_inertia": mlh_inertia_adapter,
     "internshala_hackathons": internshala_adapter,
 }
+
+
+# ---------- adapters via Jina Reader (JS-rendered platforms) ----------
+
+def _days_left_to_date(text):
+    """'10 days left' / '1 day left' -> ISO date. None when not parseable.
+
+    Unstop listings expose relative windows instead of absolute dates; the
+    conversion is exact only at fetch time, which is acceptable because the
+    stored deadline is re-checked by the enrichment pass.
+    """
+    m = re.search(r"(\d+)\s+days?\s+left", text or "", re.IGNORECASE)
+    if not m:
+        return None
+    return (datetime.now().date() + timedelta(days=int(m.group(1)))).isoformat()
+
+
+_UNSTOP_BLOCK = re.compile(
+    r"###\s+\[(?P<text>.{40,2000}?)\]\((?P<url>https://unstop\.com/[^)]+)\)",
+    re.DOTALL)
+_UNSTOP_TEAM = re.compile(r"(\d+\s*-\s*\d+\s+Members|Individual Participation)")
+_UNSTOP_PRIZE = re.compile(r"Prizes? worth ([^!\]]{2,40})")
+
+
+def _unstop_clean_title(raw):
+    """Card text starts with the title; org/location follow after it."""
+    # Titles are followed by org names in the same bracket text; cut at the
+    # first image token and strip trailing metadata noise.
+    raw = raw.split("![Image")[0]
+    parts = [p.strip() for p in raw.split("\n") if p.strip()]
+    return re.sub(r"\s+", " ", " ".join(parts))
+
+
+def unstop_jina_adapter(source):
+    """Unstop open hackathons via Jina Reader (SPA — needs JS rendering)."""
+    markdown = jina.read(source["url"])
+    if not markdown:
+        return []
+    entries = []
+    seen = set()
+    today = datetime.now().date()
+    for match in _UNSTOP_BLOCK.finditer(markdown):
+        url = match.group("url")
+        if url in seen or "/hackathons/" not in url:
+            continue
+        seen.add(url)
+        raw_text = re.sub(r"\s+", " ", match.group("text"))
+        text = _unstop_clean_title(match.group("text"))
+
+        title_m = re.match(r"(.{10,150}?)\s+(?:[A-Z][A-Za-z .,&()']+\s+){0,3}(?:\d+\s*-\s*\d+\s+Members|Individual Participation|\d+\s+Members)", text)
+        title = title_m.group(1).strip() if title_m else text[:120]
+
+        team = _UNSTOP_TEAM.search(raw_text)
+        prize = _UNSTOP_PRIZE.search(raw_text)
+        online = bool(re.search(r"\bOnline\b", raw_text))
+        location = "Online" if online else "India"
+
+        entries.append({
+            "ref": url,
+            "title": title,
+            "url": url,
+            "organization": None,  # resolved from detail enrichment
+            "description": None,
+            "deadline": _days_left_to_date(raw_text),
+            "event_start": None,
+            "event_end": None,
+            "location": location,
+            "remote": online,
+            "prize": f"₹{prize.group(1).strip()}" if prize else None,
+            "themes": [],
+            "team_size": team.group(1) if team else None,
+        })
+    entries = [e for e in entries
+               if e["deadline"] is None
+               or datetime.fromisoformat(e["deadline"]).date() >= today]
+    return entries
+
+
+_DORA_ITEM = re.compile(
+    r"\[\s*(?:!\[[^\]]*\]\([^)]*\)\s*)?"
+    r"(?P<pre>[^]]*?)\s*"
+    r"(?:!\[[^\]]*\]\([^)]*\)\s*)?"
+    r"(?P<title>[^]]{10,140}?)\s+"
+    r"(?:Virtual|Online)?[^]]*?"
+    r"(?:🏆\s*Prize Pool\s*(?P<prize>[^]]{2,60}))?\s*"
+    r"\]\((?P<url>https://dorahacks\.io/hackathon/[^)]+)\)")
+_DORA_DAYS = re.compile(r"(\d+)\s+(days?|hours?)\s+left", re.IGNORECASE)
+
+
+def dorahacks_adapter(source):
+    """DoraHacks hackathons via Jina Reader."""
+    markdown = jina.read(source["url"])
+    if not markdown:
+        return []
+    entries = []
+    seen = set()
+    for m in _DORA_ITEM.finditer(markdown):
+        url = m.group("url")
+        if url in seen:
+            continue
+        pre = m.group("pre") or ""
+        # Skip ended events outright.
+        if re.search(r"\bEnded\b", pre):
+            continue
+        seen.add(url)
+        title = m.group("title").strip()
+        tags_block = m.group(0)
+        themes = sorted(set(re.findall(
+            r"#?\b(AI Agents?|Blockchain|DeFi|Web3|Crypto|Artificial Intelligence"
+            r"|Generative AI|Trading Bots|Autonomous Trading|Quantum|BioTech"
+            r"|Legal Tech|SaaS|DeepTech)\b", tags_block)))[:6]
+        days = _DORA_DAYS.search(pre + " " + tags_block)
+        deadline = None
+        if days:
+            amount = int(days.group(1))
+            unit_days = 1 if days.group(2).lower().startswith("day") else 7
+            deadline = (datetime.now().date()
+                        + timedelta(days=amount * unit_days)).isoformat()
+        virtual = " Virtual " in f" {tags_block} "
+        entries.append({
+            "ref": url.rsplit("/", 1)[-1],
+            "title": title,
+            "url": url,
+            "organization": pre.strip().splitlines()[0].strip() if pre.strip() else None,
+            "description": None,
+            "deadline": deadline,
+            "event_start": None,
+            "event_end": None,
+            "location": "Virtual" if virtual else None,
+            "remote": True,
+            "prize": m.group("prize").strip() if m.group("prize") else None,
+            "themes": themes,
+            "team_size": None,
+        })
+    return entries
+
+
+_LABLAB_PRIZE = re.compile(r"🏆\s*\$?([\d,]+\+?)\s*(?:USD)?\s*prize pool", re.IGNORECASE)
+_LABLAB_URL = re.compile(r"\(https://lablab\.ai/(?:ai-hackathons|event)/([a-z0-9-]+)\)")
+
+
+def lablab_adapter(source):
+    """lablab.ai AI hackathons via Jina Reader.
+
+    Cards nest markdown images inside links; position-based slicing of each
+    card block is far more robust than a single link regex.
+    """
+    markdown = jina.read(source["url"])
+    if not markdown:
+        return []
+    entries = []
+    seen = set()
+    for m in _LABLAB_URL.finditer(markdown):
+        slug = m.group(1)
+        if slug in seen:
+            continue
+        seen.add(slug)
+        # Card block: everything back to the previous blank line pair.
+        start = max(0, m.start() - 1200)
+        block = markdown[start:m.end()]
+        heading = re.findall(r"## ([^#\n]{8,120})", block)
+        title = (heading[-1].strip() if heading
+                 else slug.replace("-", " ").title())
+        prize = _LABLAB_PRIZE.search(block)
+        tba = "To be announced" in block or re.search(r"\bTBA\b", block)
+        hybrid = "Hybrid" in block
+        entries.append({
+            "ref": slug,
+            "title": title[:160],
+            "url": f"https://lablab.ai/event/{slug}",
+            "organization": "lablab.ai",
+            "description": None,
+            "deadline": None,  # listing shows TBA/relative; enrichment recovers
+            "event_start": None,
+            "event_end": None,
+            "location": "Hybrid" if hybrid else "Online",
+            "remote": True,
+            "prize": f"${prize.group(1)}" if prize else None,
+            "themes": ["AI"],
+            "team_size": None,
+            "_tba": bool(tba),
+        })
+    return entries
+
+
+ADAPTERS["unstop_jina"] = unstop_jina_adapter
+ADAPTERS["dorahacks_jina"] = dorahacks_adapter
+ADAPTERS["lablab_jina"] = lablab_adapter
 
 
 def fetch_hackathons(source):

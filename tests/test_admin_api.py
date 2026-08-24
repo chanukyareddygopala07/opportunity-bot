@@ -75,9 +75,13 @@ class TestAdminActions:
         monkeypatch.setattr(
             "src.discovery.internship_scout.run", lambda **k: 0
         )
+        monkeypatch.setattr(
+            "src.discovery.hackathon_scout.run", lambda **k: 0
+        )
         monkeypatch.setattr("src.notifications.notifier.run", lambda: 0)
         monkeypatch.setattr("src.ai.assess_new", lambda limit=5: 0)
         monkeypatch.setattr("src.verification.verify_due", lambda limit=20: {})
+        monkeypatch.setattr("src.discovery.enrichment.run_enrichment", lambda limit=15: {"candidates": 0, "filled": 0, "confirmed": 0, "conflicts": 0, "unreadable": 0, "no_change": 0})
         monkeypatch.setattr(
             "src.maintenance.run_maintenance",
             lambda: {"expired": 0, "pruned_logs": 0, "pruned_errors": 0,

@@ -643,6 +643,9 @@ def update_opportunity(opportunity_id, **fields):
         "eligibility_status", "match_score", "verification_status",
         "status", "saved", "last_seen", "deadline_status", "trust_score",
         "next_verification", "organization_trust_score",
+        # Enrichment pass may set deadlines on thin records; every such
+        # change is recorded via record_opportunity_change by the caller.
+        "deadline",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
